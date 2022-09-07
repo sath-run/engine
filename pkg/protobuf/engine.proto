@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+option go_package = "github.com/sath-run/engine/pkg/protobuf";
+
+package protobuf;
+
+import "job.proto";
+
+service engine {
+  rpc HeartBeats(HeartBeatsRequest) returns (HeartBeatsResponse);
+  rpc GetNewJob(JobGetRequest) returns (JobGetResponse);
+  rpc PopulateJobResult(JobPopulateRequest) returns (JobPopulateResponse);
+}
+
+message HeartBeatsRequest {
+  string device_id = 1;
+  string os = 2;
+  string cpu_info = 3;
+  string mem_info = 4;
+  string ip = 5;
+}
+
+message HeartBeatsResponse {
+
+}
+

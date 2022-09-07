@@ -1,0 +1,66 @@
+syntax = "proto3";
+package protobuf;
+option go_package = "github.com/sath-run/engine/pkg/protobuf";
+
+message JobGetRequest {
+  string user_id = 1;
+  string device_id = 2;
+  string device_info = 3;
+}
+  
+message JobGetResponse {
+  string job_id = 1;
+  DockerImage image = 2;
+  repeated string cmds = 3;
+  string volume_path = 4;
+  repeated File files = 5;
+  repeated string outputs = 6;
+}
+
+message DockerImage {
+  string id = 1;
+  string tag = 2;
+  string uri = 3;
+}
+
+message File {
+  string name = 1;
+  EnumFileType type = 2;
+  EnumFileOperation preprocess = 3;
+  oneof content {
+    bytes data = 4;
+    FileUri remote = 5;
+  }
+}
+
+message FileUri {
+  string uri = 1;
+  EnumFileFetchMethod fetch_method = 2;
+}
+
+enum EnumFileType {
+  EFT_UNSPECIFIED = 0;
+  EFT_TAR = 1;
+}
+
+enum EnumFileFetchMethod {
+  EFFM_UNSPECIFIED = 0;
+  EFFM_HTTP = 1;
+  EFFM_GRPC_STREAM = 2;
+}
+
+enum EnumFileOperation {
+  EFO_UNSPECIFIED = 0;
+  EFO_UNTAR = 1;
+}
+
+message JobPopulateRequest {
+  string job_id = 1;
+  string user_id = 2;
+  string device_id = 3;
+  bytes result = 4;
+}
+
+message JobPopulateResponse {
+
+}
