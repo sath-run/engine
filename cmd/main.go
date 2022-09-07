@@ -4,11 +4,12 @@ import (
 	"flag"
 
 	"github.com/sath-run/engine/cmd/action"
+	"github.com/sath-run/engine/pkg/api"
 )
 
 var (
-	addr = flag.String("addr", "121.196.174.105:50051", "the address to connect to")
-	dimg = flag.String("dimg", "zengxinzhy/vf", "docker image")
+	addr = flag.String("addr", "localhost:50051", "the address of gRPC server")
+	host = flag.String("host", "localhost:50551", "the address of host")
 )
 
 func main() {
@@ -17,4 +18,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	api.Init(*host)
 }
