@@ -18,9 +18,10 @@ message JobGetResponse {
 }
 
 message DockerImage {
-  string id = 1;
-  string tag = 2;
-  string uri = 3;
+  string repository = 1;
+  string digest = 2;
+  string tag = 3;
+  string uri = 4;
 }
 
 message File {

@@ -26,7 +26,8 @@ func Init(addr string) {
 			"message": "pong",
 		})
 	})
-
+	r.POST("/services/start", StartService)
+	r.GET("/jobs/current", StreamCurrentJobStatus)
 	r.POST("/jobs/run", RunSingleJob)
 	r.Run(addr)
 }
