@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,6 +18,7 @@ const (
 	JOB_STATUS_RUNNING
 	JOB_STATUS_POPULATING
 	JOB_STATUS_SUCCESS
+	Job_STATUS_CANCELLED
 	JOB_STATUS_ERROR
 )
 
@@ -72,9 +74,8 @@ func processOutputs(dir string, job *pb.JobGetResponse) ([]byte, error) {
 	return data, nil
 }
 
-func RunSingleJob() error {
-	ctx := context.Background()
-
+func RunSingleJob(ctx context.Context) error {
+	var execErr error
 	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{
 		UserId:     "", // TODO
 		DeviceId:   "", // TODO
@@ -98,8 +99,12 @@ func RunSingleJob() error {
 	populateJobStatus(&status)
 
 	defer func() {
-		if err == nil {
-			status.Status = JOB_STATUS_ERROR
+		if execErr != nil {
+			if execErr == context.Canceled {
+				status.Status = Job_STATUS_CANCELLED
+			} else {
+				status.Status = JOB_STATUS_ERROR
+			}
 		} else {
 			status.Status = JOB_STATUS_SUCCESS
 			status.Progress = 100
@@ -109,10 +114,13 @@ func RunSingleJob() error {
 
 	dir, err := os.MkdirTemp("", "sath_tmp_*")
 	if err != nil {
+		execErr = err
 		return err
 	}
 	defer func() {
-		err = os.RemoveAll(dir)
+		if err := os.RemoveAll(dir); err != nil {
+			log.Printf("%+v\n", err)
+		}
 	}()
 
 	imageConfig := DockerImageConfig{
@@ -122,15 +130,17 @@ func RunSingleJob() error {
 		Uri:        job.Image.Uri,
 	}
 
-	if err := PullImage(ctx, &imageConfig, func(text string) {
+	if err = PullImage(ctx, &imageConfig, func(text string) {
 		status.Status = JOB_STATUS_PULLING_IMAGE
 		status.Message = text
 		populateJobStatus(&status)
 	}); err != nil {
+		execErr = err
 		return err
 	}
 
-	if err := processInputs(dir, job); err != nil {
+	if err = processInputs(dir, job); err != nil {
+		execErr = err
 		return err
 	}
 
@@ -141,19 +151,23 @@ func RunSingleJob() error {
 		status.Progress = progress
 		populateJobStatus(&status)
 	}); err != nil {
+		execErr = err
 		return err
 	}
 
 	if data, err := os.ReadFile(filepath.Join(dir, "sath_stderr.log")); err == os.ErrNotExist {
 		// nothing to do
 	} else if err != nil {
+		execErr = err
 		return err
 	} else if len(data) > 0 {
+		execErr = err
 		return errors.New(string(data))
 	}
 
 	data, err := processOutputs(dir, job)
 	if err != nil {
+		execErr = err
 		return err
 	}
 
@@ -168,6 +182,7 @@ func RunSingleJob() error {
 	})
 
 	if err != nil {
+		execErr = err
 		return err
 	}
 

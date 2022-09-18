@@ -27,7 +27,9 @@ func Init(addr string) {
 		})
 	})
 	r.POST("/services/start", StartService)
-	r.GET("/jobs/current", StreamCurrentJobStatus)
+	r.POST("/services/stop", StopService)
+	r.GET("/jobs/current/stream", StreamCurrentJobStatus)
+	r.GET("/jobs/current", GetCurrentJobStatus)
 	r.POST("/jobs/run", RunSingleJob)
 	r.Run(addr)
 }

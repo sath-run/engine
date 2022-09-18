@@ -27,8 +27,9 @@ var (
 )
 
 var g = struct {
-	mu     sync.RWMutex
-	status int
+	mu          sync.RWMutex
+	status      int
+	serviceDone chan bool
 
 	heartBeatTicker *time.Ticker
 	heartBeatDone   chan bool
@@ -36,7 +37,10 @@ var g = struct {
 	grpcConn     *grpc.ClientConn
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
-}{}
+}{
+	serviceDone:   make(chan bool),
+	heartBeatDone: make(chan bool),
+}
 
 type Config struct {
 	GrpcAddress string
@@ -108,13 +112,29 @@ func Start() error {
 }
 
 func Stop() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.status != STATUS_RUNNING {
+		return nil
+	}
+
+	g.serviceDone <- true
+	g.status = STATUS_WAITING
 	return nil
 }
 
 func run() {
+	ctx, cancel := context.WithCancel(context.Background())
+	stop := false
 	go func() {
-		for {
-			err := RunSingleJob()
+		<-g.serviceDone
+		stop = true
+		cancel()
+	}()
+	go func() {
+		for !stop {
+			err := RunSingleJob(ctx)
 			if err != nil {
 				log.Printf("%+v\n", err)
 			}

@@ -16,3 +16,13 @@ func StartService(c *gin.Context) {
 		"status": "success",
 	})
 }
+
+func StopService(c *gin.Context) {
+	err := core.Stop()
+	if fatal(c, err) {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+	})
+}

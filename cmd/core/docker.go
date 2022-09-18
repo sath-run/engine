@@ -96,13 +96,18 @@ func ExecImage(
 	}
 
 	defer func() {
+		// assign a new background to ctx to make sure the following code still works
+		// in case the original ctx was cancelled
+		ctx = context.Background()
 		if err = g.dockerClient.ContainerStop(ctx, cbody.ID, nil); err != nil {
+			log.Printf("%+v\n", err)
 			return
 		}
 		if err = g.dockerClient.ContainerRemove(ctx, cbody.ID, types.ContainerRemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
 		}); err != nil {
+			log.Printf("%+v\n", err)
 			return
 		}
 	}()

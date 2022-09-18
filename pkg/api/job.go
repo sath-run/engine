@@ -33,3 +33,12 @@ func StreamCurrentJobStatus(c *gin.Context) {
 		}
 	})
 }
+
+func GetCurrentJobStatus(c *gin.Context) {
+	status := core.GetCurrentJobStatus()
+	if status == nil {
+		c.Status(http.StatusOK)
+	} else {
+		c.JSON(http.StatusOK, status)
+	}
+}
