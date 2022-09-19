@@ -2,12 +2,12 @@ package core
 
 import (
 	"context"
-	"errors"
 	"log"
 	"sync"
 	"time"
 
 	"github.com/docker/docker/client"
+	"github.com/pkg/errors"
 	pb "github.com/sath-run/engine/pkg/protobuf"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -59,14 +59,14 @@ func Init(config *Config) error {
 
 	g.grpcConn, err = grpc.Dial(config.GrpcAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	g.grpcClient = pb.NewEngineClient(g.grpcConn)
 
 	g.dockerClient, err = client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	g.heartBeatTicker = time.NewTicker(30 * time.Second)

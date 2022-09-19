@@ -5,10 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/pkg/errors"
+	"github.com/sath-run/engine/cmd/utils"
 )
 
 type DockerImageResponse struct {
@@ -41,7 +42,7 @@ func PullImage(ctx context.Context, config *DockerImageConfig, onProgress func(t
 	// look for local images to see if any mathces given id
 	images, err := g.dockerClient.ImageList(ctx, types.ImageListOptions{})
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	for _, image := range images {
@@ -61,7 +62,7 @@ func PullImage(ctx context.Context, config *DockerImageConfig, onProgress func(t
 	// pull image from remote
 	reader, err := g.dockerClient.ImagePull(context.Background(), uri, types.ImagePullOptions{})
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	defer reader.Close()
 
@@ -92,7 +93,7 @@ func ExecImage(
 		},
 	}, nil, nil, "")
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	defer func() {
@@ -100,14 +101,14 @@ func ExecImage(
 		// in case the original ctx was cancelled
 		ctx = context.Background()
 		if err = g.dockerClient.ContainerStop(ctx, cbody.ID, nil); err != nil {
-			log.Printf("%+v\n", err)
+			utils.LogError(errors.WithStack(err))
 			return
 		}
 		if err = g.dockerClient.ContainerRemove(ctx, cbody.ID, types.ContainerRemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
 		}); err != nil {
-			log.Printf("%+v\n", err)
+			utils.LogError(errors.WithStack(err))
 			return
 		}
 	}()
@@ -122,7 +123,7 @@ func ExecImage(
 		Details:    true,
 	})
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	defer out.Close()
 
@@ -133,7 +134,7 @@ func ExecImage(
 		var res DockerImageResponse
 
 		if err := json.Unmarshal([]byte(line), &res); err != nil {
-			log.Printf("%+v\n", err)
+			utils.LogError(errors.WithStack(err))
 			continue
 		}
 
@@ -141,11 +142,11 @@ func ExecImage(
 			var progress ProgressData_V1
 			data, err := json.Marshal(res.Data)
 			if err != nil {
-				log.Printf("%+v\n", err)
+				utils.LogError(errors.WithStack(err))
 				continue
 			}
 			if err := json.Unmarshal(data, &progress); err != nil {
-				log.Printf("%+v\n", err)
+				utils.LogError(errors.WithStack(err))
 				continue
 			}
 			onProgress(progress.Progress)
@@ -154,7 +155,7 @@ func ExecImage(
 	}
 
 	if err := scanner.Err(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil

@@ -2,25 +2,48 @@ package core
 
 import (
 	"context"
-	"errors"
 	"log"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/pkg/errors"
 	pb "github.com/sath-run/engine/pkg/protobuf"
 )
 
+type JobStatusEnum int
+
 const (
-	JOB_STATUS_UNSPECIFIED = iota
+	JOB_STATUS_UNSPECIFIED JobStatusEnum = iota
 	JOB_STATUS_READY
 	JOB_STATUS_PULLING_IMAGE
 	JOB_STATUS_RUNNING
 	JOB_STATUS_POPULATING
 	JOB_STATUS_SUCCESS
-	Job_STATUS_CANCELLED
+	JOB_STATUS_CANCELLED
 	JOB_STATUS_ERROR
 )
+
+func (enum JobStatusEnum) Text() string {
+	switch enum {
+	case JOB_STATUS_READY:
+		return "ready"
+	case JOB_STATUS_PULLING_IMAGE:
+		return "pulling-image"
+	case JOB_STATUS_RUNNING:
+		return "running"
+	case JOB_STATUS_POPULATING:
+		return "populating"
+	case JOB_STATUS_SUCCESS:
+		return "success"
+	case JOB_STATUS_CANCELLED:
+		return "cancelled"
+	case JOB_STATUS_ERROR:
+		return "error"
+	default:
+		return "unspecified"
+	}
+}
 
 var jobContext = struct {
 	mu                sync.RWMutex
@@ -30,7 +53,7 @@ var jobContext = struct {
 
 type JobStatus struct {
 	Id       string
-	Status   int
+	Status   JobStatusEnum
 	Progress float64
 	Message  string
 }
@@ -100,10 +123,11 @@ func RunSingleJob(ctx context.Context) error {
 
 	defer func() {
 		if execErr != nil {
-			if execErr == context.Canceled {
-				status.Status = Job_STATUS_CANCELLED
+			if errors.Is(execErr, context.Canceled) {
+				status.Status = JOB_STATUS_CANCELLED
 			} else {
 				status.Status = JOB_STATUS_ERROR
+				status.Message = execErr.Error()
 			}
 		} else {
 			status.Status = JOB_STATUS_SUCCESS
@@ -115,7 +139,7 @@ func RunSingleJob(ctx context.Context) error {
 	dir, err := os.MkdirTemp("", "sath_tmp_*")
 	if err != nil {
 		execErr = err
-		return err
+		return errors.WithStack(err)
 	}
 	defer func() {
 		if err := os.RemoveAll(dir); err != nil {
@@ -136,12 +160,12 @@ func RunSingleJob(ctx context.Context) error {
 		populateJobStatus(&status)
 	}); err != nil {
 		execErr = err
-		return err
+		return errors.WithStack(err)
 	}
 
 	if err = processInputs(dir, job); err != nil {
 		execErr = err
-		return err
+		return errors.WithStack(err)
 	}
 
 	status.Status = JOB_STATUS_RUNNING
@@ -152,7 +176,7 @@ func RunSingleJob(ctx context.Context) error {
 		populateJobStatus(&status)
 	}); err != nil {
 		execErr = err
-		return err
+		return errors.WithStack(err)
 	}
 
 	if data, err := os.ReadFile(filepath.Join(dir, "sath_stderr.log")); err == os.ErrNotExist {
@@ -168,7 +192,7 @@ func RunSingleJob(ctx context.Context) error {
 	data, err := processOutputs(dir, job)
 	if err != nil {
 		execErr = err
-		return err
+		return errors.WithStack(err)
 	}
 
 	status.Status = JOB_STATUS_POPULATING
@@ -183,7 +207,7 @@ func RunSingleJob(ctx context.Context) error {
 
 	if err != nil {
 		execErr = err
-		return err
+		return errors.WithStack(err)
 	}
 
 	return nil

@@ -8,6 +8,25 @@ import (
 	"github.com/sath-run/engine/cmd/core"
 )
 
+type JobStatus struct {
+	Id       string  `json:"id"`
+	Message  string  `json:"message"`
+	Status   string  `json:"status"`
+	Progress float64 `json:"progress"`
+}
+
+func getJobStatusFromCore(coreStatus *core.JobStatus) *JobStatus {
+	if coreStatus == nil {
+		return nil
+	}
+	return &JobStatus{
+		Id:       coreStatus.Id,
+		Message:  coreStatus.Message,
+		Status:   coreStatus.Status.Text(),
+		Progress: coreStatus.Progress,
+	}
+}
+
 func RunSingleJob(c *gin.Context) {
 	// _, err := action.RunSingleJob()
 	// if fatal(c, err) {
@@ -24,7 +43,7 @@ func StreamCurrentJobStatus(c *gin.Context) {
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case status := <-chanStream:
-			c.SSEvent("status", status)
+			c.SSEvent("job-status", getJobStatusFromCore(&status))
 			return true
 		case <-c.Request.Context().Done():
 			// client disconnected
@@ -39,6 +58,6 @@ func GetCurrentJobStatus(c *gin.Context) {
 	if status == nil {
 		c.Status(http.StatusOK)
 	} else {
-		c.JSON(http.StatusOK, status)
+		c.JSON(http.StatusOK, getJobStatusFromCore(status))
 	}
 }
