@@ -87,6 +87,9 @@ func ExecImage(
 		Cmd:   cmds,
 		Image: image,
 		Tty:   true,
+		Labels: map[string]string{
+			"run.sath.source": "engine",
+		},
 	}, &container.HostConfig{
 		Binds: []string{
 			fmt.Sprintf("%s:%s", dir, volumePath),

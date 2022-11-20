@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -175,6 +176,13 @@ func RunSingleJob(ctx context.Context) error {
 		status.Progress = progress
 		populateJobStatus(&status)
 	}); err != nil {
+		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
+			JobId:    job.JobId,
+			UserId:   "", // TODO
+			DeviceId: "", // TODO
+			Result:   []byte(err.Error()),
+			Status:   http.StatusInternalServerError,
+		})
 		execErr = err
 		return errors.WithStack(err)
 	}
@@ -186,11 +194,25 @@ func RunSingleJob(ctx context.Context) error {
 		return err
 	} else if len(data) > 0 {
 		execErr = err
+		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
+			JobId:    job.JobId,
+			UserId:   "", // TODO
+			DeviceId: "", // TODO
+			Result:   data,
+			Status:   http.StatusInternalServerError,
+		})
 		return errors.New(string(data))
 	}
 
 	data, err := processOutputs(dir, job)
 	if err != nil {
+		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
+			JobId:    job.JobId,
+			UserId:   "", // TODO
+			DeviceId: "", // TODO
+			Result:   []byte(err.Error()),
+			Status:   http.StatusInternalServerError,
+		})
 		execErr = err
 		return errors.WithStack(err)
 	}
@@ -203,6 +225,7 @@ func RunSingleJob(ctx context.Context) error {
 		UserId:   "", // TODO
 		DeviceId: "", // TODO
 		Result:   data,
+		Status:   http.StatusOK,
 	})
 
 	if err != nil {

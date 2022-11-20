@@ -23,6 +23,7 @@ const (
 
 var (
 	ErrInitailized = errors.New("core has already been initailized")
+	ErrRunning     = errors.New("engine is running")
 	ErrStopped     = errors.New("invalid status: STOPPED")
 )
 

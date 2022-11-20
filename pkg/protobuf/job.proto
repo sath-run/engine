@@ -60,6 +60,7 @@ message JobPopulateRequest {
   string user_id = 2;
   string device_id = 3;
   bytes result = 4;
+  int32 status = 5;
 }
 
 message JobPopulateResponse {
