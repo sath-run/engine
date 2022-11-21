@@ -100,22 +100,18 @@ func processOutputs(dir string, job *pb.JobGetResponse) ([]byte, error) {
 
 func RunSingleJob(ctx context.Context) error {
 	var execErr error
-	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{
-		UserId:     "", // TODO
-		DeviceId:   "", // TODO
-		DeviceInfo: "", // TODO
-	})
+	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{})
 
 	if err != nil {
 		return err
 	}
 
-	if job == nil || len(job.JobId) == 0 {
+	if job == nil || len(job.ExecId) == 0 {
 		return nil
 	}
 
 	status := JobStatus{
-		Id:       job.JobId,
+		Id:       job.ExecId,
 		Progress: 0,
 		Status:   JOB_STATUS_READY,
 	}
@@ -177,11 +173,9 @@ func RunSingleJob(ctx context.Context) error {
 		populateJobStatus(&status)
 	}); err != nil {
 		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
-			JobId:    job.JobId,
-			UserId:   "", // TODO
-			DeviceId: "", // TODO
-			Result:   []byte(err.Error()),
-			Status:   http.StatusInternalServerError,
+			ExecId: job.ExecId,
+			Result: []byte(err.Error()),
+			Status: http.StatusInternalServerError,
 		})
 		execErr = err
 		return errors.WithStack(err)
@@ -195,11 +189,9 @@ func RunSingleJob(ctx context.Context) error {
 	} else if len(data) > 0 {
 		execErr = err
 		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
-			JobId:    job.JobId,
-			UserId:   "", // TODO
-			DeviceId: "", // TODO
-			Result:   data,
-			Status:   http.StatusInternalServerError,
+			ExecId: job.ExecId,
+			Result: data,
+			Status: http.StatusInternalServerError,
 		})
 		return errors.New(string(data))
 	}
@@ -207,11 +199,9 @@ func RunSingleJob(ctx context.Context) error {
 	data, err := processOutputs(dir, job)
 	if err != nil {
 		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
-			JobId:    job.JobId,
-			UserId:   "", // TODO
-			DeviceId: "", // TODO
-			Result:   []byte(err.Error()),
-			Status:   http.StatusInternalServerError,
+			ExecId: job.ExecId,
+			Result: []byte(err.Error()),
+			Status: http.StatusInternalServerError,
 		})
 		execErr = err
 		return errors.WithStack(err)
@@ -221,11 +211,9 @@ func RunSingleJob(ctx context.Context) error {
 	populateJobStatus(&status)
 
 	_, err = g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
-		JobId:    job.JobId,
-		UserId:   "", // TODO
-		DeviceId: "", // TODO
-		Result:   data,
-		Status:   http.StatusOK,
+		ExecId: job.ExecId,
+		Result: data,
+		Status: http.StatusOK,
 	})
 
 	if err != nil {

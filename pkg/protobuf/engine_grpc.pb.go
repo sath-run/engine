@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type EngineClient interface {
+	HandShake(ctx context.Context, in *HandShakeRequest, opts ...grpc.CallOption) (*HandShakeResponse, error)
 	HeartBeats(ctx context.Context, in *HeartBeatsRequest, opts ...grpc.CallOption) (*HeartBeatsResponse, error)
 	GetNewJob(ctx context.Context, in *JobGetRequest, opts ...grpc.CallOption) (*JobGetResponse, error)
 	PopulateJobResult(ctx context.Context, in *JobPopulateRequest, opts ...grpc.CallOption) (*JobPopulateResponse, error)
@@ -33,6 +34,15 @@ type engineClient struct {
 
 func NewEngineClient(cc grpc.ClientConnInterface) EngineClient {
 	return &engineClient{cc}
+}
+
+func (c *engineClient) HandShake(ctx context.Context, in *HandShakeRequest, opts ...grpc.CallOption) (*HandShakeResponse, error) {
+	out := new(HandShakeResponse)
+	err := c.cc.Invoke(ctx, "/protobuf.engine/HandShake", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *engineClient) HeartBeats(ctx context.Context, in *HeartBeatsRequest, opts ...grpc.CallOption) (*HeartBeatsResponse, error) {
@@ -66,6 +76,7 @@ func (c *engineClient) PopulateJobResult(ctx context.Context, in *JobPopulateReq
 // All implementations must embed UnimplementedEngineServer
 // for forward compatibility
 type EngineServer interface {
+	HandShake(context.Context, *HandShakeRequest) (*HandShakeResponse, error)
 	HeartBeats(context.Context, *HeartBeatsRequest) (*HeartBeatsResponse, error)
 	GetNewJob(context.Context, *JobGetRequest) (*JobGetResponse, error)
 	PopulateJobResult(context.Context, *JobPopulateRequest) (*JobPopulateResponse, error)
@@ -76,6 +87,9 @@ type EngineServer interface {
 type UnimplementedEngineServer struct {
 }
 
+func (UnimplementedEngineServer) HandShake(context.Context, *HandShakeRequest) (*HandShakeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HandShake not implemented")
+}
 func (UnimplementedEngineServer) HeartBeats(context.Context, *HeartBeatsRequest) (*HeartBeatsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HeartBeats not implemented")
 }
@@ -96,6 +110,24 @@ type UnsafeEngineServer interface {
 
 func RegisterEngineServer(s grpc.ServiceRegistrar, srv EngineServer) {
 	s.RegisterService(&Engine_ServiceDesc, srv)
+}
+
+func _Engine_HandShake_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HandShakeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EngineServer).HandShake(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/protobuf.engine/HandShake",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EngineServer).HandShake(ctx, req.(*HandShakeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Engine_HeartBeats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -159,6 +191,10 @@ var Engine_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "protobuf.engine",
 	HandlerType: (*EngineServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "HandShake",
+			Handler:    _Engine_HandShake_Handler,
+		},
 		{
 			MethodName: "HeartBeats",
 			Handler:    _Engine_HeartBeats_Handler,

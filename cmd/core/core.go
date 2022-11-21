@@ -2,7 +2,11 @@ package core
 
 import (
 	"context"
+	"crypto/tls"
 	"log"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -10,7 +14,9 @@ import (
 	"github.com/pkg/errors"
 	pb "github.com/sath-run/engine/pkg/protobuf"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -27,7 +33,7 @@ var (
 	ErrStopped     = errors.New("invalid status: STOPPED")
 )
 
-var g = struct {
+type Global struct {
 	mu          sync.RWMutex
 	status      int
 	serviceDone chan bool
@@ -35,16 +41,24 @@ var g = struct {
 	heartBeatTicker *time.Ticker
 	heartBeatDone   chan bool
 
+	token        string
 	grpcConn     *grpc.ClientConn
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
-}{
+}
+
+var g = Global{
 	serviceDone:   make(chan bool),
 	heartBeatDone: make(chan bool),
 }
 
 type Config struct {
 	GrpcAddress string
+	SSL         bool
+}
+
+func (g *Global) ContextWithToken(ctx context.Context) context.Context {
+	return metadata.AppendToOutgoingContext(ctx, "authorization", g.token)
 }
 
 func Init(config *Config) error {
@@ -58,7 +72,16 @@ func Init(config *Config) error {
 		return ErrInitailized
 	}
 
-	g.grpcConn, err = grpc.Dial(config.GrpcAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	var credential credentials.TransportCredentials
+	if config.SSL {
+		credential = credentials.NewTLS(&tls.Config{
+			InsecureSkipVerify: false,
+		})
+	} else {
+		credential = insecure.NewCredentials()
+	}
+
+	g.grpcConn, err = grpc.Dial(config.GrpcAddress, grpc.WithTransportCredentials(credential))
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -70,6 +93,20 @@ func Init(config *Config) error {
 		return errors.WithStack(err)
 	}
 
+	ctx := context.Background()
+	token := readToken()
+	if len(token) > 0 {
+		ctx = metadata.AppendToOutgoingContext(context.Background(), "authorization", token)
+	}
+	resp, err := g.grpcClient.HandShake(ctx, &pb.HandShakeRequest{})
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	g.token = resp.Token
+	if len(token) == 0 {
+		saveToken(resp.Token)
+	}
+
 	g.heartBeatTicker = time.NewTicker(30 * time.Second)
 	g.heartBeatDone = make(chan bool)
 	setupHeartBeat()
@@ -78,20 +115,49 @@ func Init(config *Config) error {
 	return nil
 }
 
+func readToken() string {
+	dir, err := getExecutableDir()
+	if err != nil {
+		return ""
+	}
+	bytes, err := os.ReadFile(filepath.Join(dir, ".sath.token"))
+	if err != nil {
+		return ""
+	}
+	return string(bytes)
+}
+
+func saveToken(token string) error {
+	dir, err := getExecutableDir()
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filepath.Join(dir, ".sath.token"), []byte(token), 0666)
+}
+
+func getExecutableDir() (string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	dir := filepath.Dir(executable)
+	return dir, err
+}
+
 func setupHeartBeat() {
 	go func() {
-		ctx := context.Background()
 		for {
 			select {
 			case <-g.heartBeatDone:
 				return
 			case <-g.heartBeatTicker.C:
+				ctx := g.ContextWithToken(context.Background())
 				_, _ = g.grpcClient.HeartBeats(ctx, &pb.HeartBeatsRequest{
-					DeviceId: "", // todo
-					Os:       "", // todo
-					CpuInfo:  "", // todo
-					MemInfo:  "", // todo
-					Ip:       "", // todo
+					Os:      runtime.GOOS, // todo
+					CpuInfo: "",           // todo
+					MemInfo: "",           // todo
 				})
 			}
 		}
@@ -135,9 +201,10 @@ func run() {
 	}()
 	go func() {
 		for !stop {
-			err := RunSingleJob(ctx)
+			err := RunSingleJob(g.ContextWithToken(ctx))
 			if err != nil {
 				log.Printf("%+v\n", err)
+				time.Sleep(time.Second * 5)
 			}
 		}
 	}()

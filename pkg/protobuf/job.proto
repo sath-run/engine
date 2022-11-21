@@ -3,13 +3,10 @@ package protobuf;
 option go_package = "github.com/sath-run/engine/pkg/protobuf";
 
 message JobGetRequest {
-  string user_id = 1;
-  string device_id = 2;
-  string device_info = 3;
 }
   
 message JobGetResponse {
-  string job_id = 1;
+  string exec_id = 1;
   DockerImage image = 2;
   repeated string cmds = 3;
   string volume_path = 4;
@@ -56,11 +53,9 @@ enum EnumFileOperation {
 }
 
 message JobPopulateRequest {
-  string job_id = 1;
-  string user_id = 2;
-  string device_id = 3;
-  bytes result = 4;
-  int32 status = 5;
+  string exec_id = 1;
+  bytes result = 2;
+  int32 status = 3;
 }
 
 message JobPopulateResponse {

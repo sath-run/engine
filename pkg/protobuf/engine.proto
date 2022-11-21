@@ -7,17 +7,24 @@ package protobuf;
 import "job.proto";
 
 service engine {
+  rpc HandShake(HandShakeRequest) returns (HandShakeResponse);
   rpc HeartBeats(HeartBeatsRequest) returns (HeartBeatsResponse);
   rpc GetNewJob(JobGetRequest) returns (JobGetResponse);
   rpc PopulateJobResult(JobPopulateRequest) returns (JobPopulateResponse);
 }
 
+message HandShakeRequest {
+
+}
+
+message HandShakeResponse {
+  string token = 1;
+}
+
 message HeartBeatsRequest {
-  string device_id = 1;
-  string os = 2;
-  string cpu_info = 3;
-  string mem_info = 4;
-  string ip = 5;
+  string os = 1;
+  string cpu_info = 2;
+  string mem_info = 3;
 }
 
 message HeartBeatsResponse {

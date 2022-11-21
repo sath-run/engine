@@ -27,6 +27,6 @@ func StopService(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
+		"message": "sath-engine stopped",
 	})
 }
