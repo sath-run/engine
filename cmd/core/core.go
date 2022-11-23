@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,6 +18,10 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/host"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 const (
@@ -95,10 +100,17 @@ func Init(config *Config) error {
 
 	ctx := context.Background()
 	token := readToken()
+	sysInfo := ""
 	if len(token) > 0 {
 		ctx = metadata.AppendToOutgoingContext(context.Background(), "authorization", token)
+	} else {
+		if sysInfo, err = getSystemInfo(); err != nil {
+			return err
+		}
 	}
-	resp, err := g.grpcClient.HandShake(ctx, &pb.HandShakeRequest{})
+	resp, err := g.grpcClient.HandShake(ctx, &pb.HandShakeRequest{
+		SystemInfo: sysInfo,
+	})
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -218,4 +230,41 @@ func run() {
 			}
 		}
 	}()
+}
+
+func getSystemInfo() (string, error) {
+	cpus, err := cpu.Info()
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	hostInfo, err := host.Info()
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+
+	meminfo, err := mem.VirtualMemory()
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+
+	info := map[string]interface{}{
+		"cpus": cpus,
+		"host": map[string]interface{}{
+			"os":              hostInfo.OS,
+			"platform":        hostInfo.Platform,
+			"platformFamily":  hostInfo.PlatformFamily,
+			"platformVersion": hostInfo.PlatformVersion,
+			"kernelVersion":   hostInfo.KernelVersion,
+			"kernelArch":      hostInfo.KernelArch,
+		},
+		"memory": map[string]interface{}{
+			"total": meminfo.Total,
+		},
+	}
+
+	bytes, err := json.Marshal(&info)
+	if err != nil {
+		return "", errors.WithStack(err)
+	}
+	return string(bytes), nil
 }

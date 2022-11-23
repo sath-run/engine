@@ -15,7 +15,7 @@ service engine {
 }
 
 message HandShakeRequest {
-
+  string system_info = 1;
 }
 
 message HandShakeResponse {

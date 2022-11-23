@@ -2,8 +2,6 @@ package api
 
 import (
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sath-run/engine/cmd/utils"
@@ -22,9 +20,6 @@ func fatal(c *gin.Context, err error) bool {
 	}
 }
 func Init(addr string) {
-	if strings.ToLower(os.Getenv("GIN_MODE")) != "debug" {
-		gin.SetMode(gin.ReleaseMode)
-	}
 
 	r := gin.Default()
 	r.SetTrustedProxies([]string{"127.0.0.1"})
@@ -40,6 +35,7 @@ func Init(addr string) {
 	r.GET("/jobs/current", GetCurrentJobStatus)
 	r.POST("/jobs/run", RunSingleJob)
 	r.POST("/users/login", Login)
+	r.POST("/users/logout", Logout)
 	r.GET("/users/token", GetToken)
 	r.Run(addr)
 }

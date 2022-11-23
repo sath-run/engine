@@ -33,3 +33,10 @@ func Login(c *gin.Context) {
 func GetToken(c *gin.Context) {
 	c.String(http.StatusOK, core.Token())
 }
+
+func Logout(c *gin.Context) {
+	if err := core.Logout(); fatal(c, err) {
+		return
+	}
+	c.Status(http.StatusOK)
+}
