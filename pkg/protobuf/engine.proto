@@ -8,6 +8,7 @@ import "job.proto";
 
 service engine {
   rpc HandShake(HandShakeRequest) returns (HandShakeResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
   rpc HeartBeats(HeartBeatsRequest) returns (HeartBeatsResponse);
   rpc GetNewJob(JobGetRequest) returns (JobGetResponse);
   rpc PopulateJobResult(JobPopulateRequest) returns (JobPopulateResponse);
@@ -18,6 +19,15 @@ message HandShakeRequest {
 }
 
 message HandShakeResponse {
+  string token = 1;
+}
+
+message LoginRequest {
+  string password = 1;
+  string account = 2;
+}
+
+message LoginResponse {
   string token = 1;
 }
 

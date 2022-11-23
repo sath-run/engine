@@ -104,7 +104,7 @@ func Init(config *Config) error {
 	}
 	g.token = resp.Token
 	if len(token) == 0 {
-		saveToken(resp.Token)
+		saveToken(resp.Token, false)
 	}
 
 	g.heartBeatTicker = time.NewTicker(30 * time.Second)
@@ -120,20 +120,28 @@ func readToken() string {
 	if err != nil {
 		return ""
 	}
-	bytes, err := os.ReadFile(filepath.Join(dir, ".sath.token"))
+	bytes, err := os.ReadFile(filepath.Join(dir, ".user.token"))
 	if err != nil {
-		return ""
+		bytes, err = os.ReadFile(filepath.Join(dir, ".device.token"))
+		if err != nil {
+			return ""
+		}
 	}
 	return string(bytes)
 }
 
-func saveToken(token string) error {
+func saveToken(token string, isUser bool) error {
 	dir, err := getExecutableDir()
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(filepath.Join(dir, ".sath.token"), []byte(token), 0666)
+	if isUser {
+		return os.WriteFile(filepath.Join(dir, ".user.token"), []byte(token), 0666)
+
+	} else {
+		return os.WriteFile(filepath.Join(dir, ".device.token"), []byte(token), 0666)
+	}
 }
 
 func getExecutableDir() (string, error) {
@@ -202,7 +210,9 @@ func run() {
 	go func() {
 		for !stop {
 			err := RunSingleJob(g.ContextWithToken(ctx))
-			if err != nil {
+			if errors.Is(err, context.Canceled) {
+				log.Println("job cancelled")
+			} else if err != nil {
 				log.Printf("%+v\n", err)
 				time.Sleep(time.Second * 5)
 			}

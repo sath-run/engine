@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"testing"
 
@@ -16,7 +15,7 @@ func TestDockerPull(t *testing.T) {
 	})
 
 	if err != nil {
-		fmt.Printf("%+v\n", err)
+		log.Printf("%+v\n", err)
 		panic(err)
 	}
 
