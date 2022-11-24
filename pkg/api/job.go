@@ -22,7 +22,7 @@ func getJobStatusFromCore(coreStatus *core.JobStatus) *JobStatus {
 	return &JobStatus{
 		Id:       coreStatus.Id,
 		Message:  coreStatus.Message,
-		Status:   coreStatus.Status.Text(),
+		Status:   core.JobStatusText(coreStatus.Status),
 		Progress: coreStatus.Progress,
 	}
 }

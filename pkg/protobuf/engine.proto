@@ -31,10 +31,25 @@ message LoginResponse {
   string token = 1;
 }
 
+enum EnumJobStatus {
+  EJS_UNSPECIFIED = 0;
+	EJS_READY = 10;
+	EJS_PULLING_IMAGE = 20;
+	EJS_RUNNING = 30;
+	EJS_POPULATING = 40;
+	EJS_SUCCESS = 50;
+	EJS_CANCELLED = 60;
+	EJS_ERROR = 70;
+}
+
 message HeartBeatsRequest {
-  string os = 1;
-  string cpu_info = 2;
-  string mem_info = 3;
+  message ExecInfo {
+    string exec_id = 1;
+    EnumJobStatus status = 2;
+    float progress = 3;
+    string message = 4;
+  }
+  repeated ExecInfo exec_infos = 1;
 }
 
 message HeartBeatsResponse {

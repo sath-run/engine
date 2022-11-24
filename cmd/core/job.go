@@ -12,34 +12,21 @@ import (
 	pb "github.com/sath-run/engine/pkg/protobuf"
 )
 
-type JobStatusEnum int
-
-const (
-	JOB_STATUS_UNSPECIFIED JobStatusEnum = iota
-	JOB_STATUS_READY
-	JOB_STATUS_PULLING_IMAGE
-	JOB_STATUS_RUNNING
-	JOB_STATUS_POPULATING
-	JOB_STATUS_SUCCESS
-	JOB_STATUS_CANCELLED
-	JOB_STATUS_ERROR
-)
-
-func (enum JobStatusEnum) Text() string {
+func JobStatusText(enum pb.EnumJobStatus) string {
 	switch enum {
-	case JOB_STATUS_READY:
+	case pb.EnumJobStatus_EJS_READY:
 		return "ready"
-	case JOB_STATUS_PULLING_IMAGE:
+	case pb.EnumJobStatus_EJS_PULLING_IMAGE:
 		return "pulling-image"
-	case JOB_STATUS_RUNNING:
+	case pb.EnumJobStatus_EJS_RUNNING:
 		return "running"
-	case JOB_STATUS_POPULATING:
+	case pb.EnumJobStatus_EJS_POPULATING:
 		return "populating"
-	case JOB_STATUS_SUCCESS:
+	case pb.EnumJobStatus_EJS_SUCCESS:
 		return "success"
-	case JOB_STATUS_CANCELLED:
+	case pb.EnumJobStatus_EJS_CANCELLED:
 		return "cancelled"
-	case JOB_STATUS_ERROR:
+	case pb.EnumJobStatus_EJS_ERROR:
 		return "error"
 	default:
 		return "unspecified"
@@ -54,7 +41,7 @@ var jobContext = struct {
 
 type JobStatus struct {
 	Id       string
-	Status   JobStatusEnum
+	Status   pb.EnumJobStatus
 	Progress float64
 	Message  string
 }
@@ -113,7 +100,7 @@ func RunSingleJob(ctx context.Context) error {
 	status := JobStatus{
 		Id:       job.ExecId,
 		Progress: 0,
-		Status:   JOB_STATUS_READY,
+		Status:   pb.EnumJobStatus_EJS_READY,
 	}
 
 	populateJobStatus(&status)
@@ -121,13 +108,13 @@ func RunSingleJob(ctx context.Context) error {
 	defer func() {
 		if execErr != nil {
 			if errors.Is(execErr, context.Canceled) {
-				status.Status = JOB_STATUS_CANCELLED
+				status.Status = pb.EnumJobStatus_EJS_CANCELLED
 			} else {
-				status.Status = JOB_STATUS_ERROR
+				status.Status = pb.EnumJobStatus_EJS_ERROR
 				status.Message = execErr.Error()
 			}
 		} else {
-			status.Status = JOB_STATUS_SUCCESS
+			status.Status = pb.EnumJobStatus_EJS_SUCCESS
 			status.Progress = 100
 		}
 		populateJobStatus(&status)
@@ -152,7 +139,7 @@ func RunSingleJob(ctx context.Context) error {
 	}
 
 	if err = PullImage(ctx, &imageConfig, func(text string) {
-		status.Status = JOB_STATUS_PULLING_IMAGE
+		status.Status = pb.EnumJobStatus_EJS_PULLING_IMAGE
 		status.Message = text
 		populateJobStatus(&status)
 	}); err != nil {
@@ -165,10 +152,10 @@ func RunSingleJob(ctx context.Context) error {
 		return errors.WithStack(err)
 	}
 
-	status.Status = JOB_STATUS_RUNNING
+	status.Status = pb.EnumJobStatus_EJS_RUNNING
 	populateJobStatus(&status)
 	if err = ExecImage(ctx, job.Cmds, imageConfig.Image(), dir, job.VolumePath, func(progress float64) {
-		status.Status = JOB_STATUS_RUNNING
+		status.Status = pb.EnumJobStatus_EJS_RUNNING
 		status.Progress = progress
 		populateJobStatus(&status)
 	}); err != nil {
@@ -207,7 +194,7 @@ func RunSingleJob(ctx context.Context) error {
 		return errors.WithStack(err)
 	}
 
-	status.Status = JOB_STATUS_POPULATING
+	status.Status = pb.EnumJobStatus_EJS_POPULATING
 	populateJobStatus(&status)
 
 	_, err = g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{

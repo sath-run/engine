@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"time"
 
@@ -174,11 +173,17 @@ func setupHeartBeat() {
 				return
 			case <-g.heartBeatTicker.C:
 				ctx := g.ContextWithToken(context.Background())
-				_, _ = g.grpcClient.HeartBeats(ctx, &pb.HeartBeatsRequest{
-					Os:      runtime.GOOS, // todo
-					CpuInfo: "",           // todo
-					MemInfo: "",           // todo
-				})
+				info := pb.HeartBeatsRequest{}
+				status := GetCurrentJobStatus()
+				if status != nil {
+					info.ExecInfos = append(info.ExecInfos, &pb.HeartBeatsRequest_ExecInfo{
+						ExecId:   status.Id,
+						Status:   status.Status,
+						Progress: float32(status.Progress),
+						Message:  status.Message,
+					})
+				}
+				_, _ = g.grpcClient.HeartBeats(ctx, &info)
 			}
 		}
 	}()
