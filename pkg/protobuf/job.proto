@@ -56,6 +56,7 @@ message JobPopulateRequest {
   string exec_id = 1;
   bytes result = 2;
   int32 status = 3;
+  repeated File files = 4;
 }
 
 message JobPopulateResponse {
