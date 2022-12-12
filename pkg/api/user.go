@@ -31,7 +31,11 @@ func Login(c *gin.Context) {
 }
 
 func GetToken(c *gin.Context) {
-	c.String(http.StatusOK, core.Token())
+	token, isUser := core.Token()
+	c.JSON(http.StatusOK, gin.H{
+		"token":  token,
+		"isUser": isUser,
+	})
 }
 
 func Logout(c *gin.Context) {

@@ -20,6 +20,7 @@ message HandShakeRequest {
 
 message HandShakeResponse {
   string token = 1;
+  bool isUser = 2;
 }
 
 message LoginRequest {

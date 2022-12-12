@@ -46,6 +46,7 @@ type Global struct {
 	heartBeatDone   chan bool
 
 	token        string
+	isUser       bool
 	grpcConn     *grpc.ClientConn
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
@@ -114,6 +115,7 @@ func Init(config *Config) error {
 		return errors.WithStack(err)
 	}
 	g.token = resp.Token
+	g.isUser = resp.IsUser
 	if len(token) == 0 {
 		saveToken(resp.Token, false)
 	}

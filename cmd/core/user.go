@@ -43,6 +43,6 @@ func Logout() error {
 	return nil
 }
 
-func Token() string {
-	return g.token
+func Token() (string, bool) {
+	return g.token, g.isUser
 }
