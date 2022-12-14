@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -114,6 +115,7 @@ func Init(config *Config) error {
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	fmt.Println(resp)
 	g.token = resp.Token
 	g.isUser = resp.IsUser
 	if len(token) == 0 {

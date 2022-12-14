@@ -21,6 +21,7 @@ func Login(email string, password string) error {
 		return err
 	}
 	g.token = res.Token
+	g.isUser = true
 	return nil
 }
 
