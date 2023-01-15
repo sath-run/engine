@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -102,7 +103,7 @@ func ExecImage(
 	ctx context.Context,
 	cmds []string,
 	image string,
-	dir string,
+	hostDir string,
 	volumePath string,
 	onProgress func(progress float64)) error {
 
@@ -115,7 +116,7 @@ func ExecImage(
 		},
 	}, &container.HostConfig{
 		Binds: []string{
-			fmt.Sprintf("%s:%s", dir, volumePath),
+			fmt.Sprintf("%s:%s", hostDir, volumePath),
 		},
 	}, nil, nil, "")
 	if err != nil {
@@ -152,6 +153,12 @@ func ExecImage(
 		return errors.WithStack(err)
 	}
 	defer out.Close()
+
+	dir, err := getExecutableDir()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	dir = filepath.Join(dir, "data", filepath.Base(hostDir))
 
 	tails, err := tail.TailFile(path.Join(dir, "sath.log"), tail.Config{Follow: true, Logger: tail.DiscardingLogger})
 	if err != nil {
