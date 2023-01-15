@@ -125,6 +125,11 @@ func RunSingleJob(ctx context.Context) error {
 		execErr = err
 		return errors.WithStack(err)
 	}
+	err = os.MkdirAll(filepath.Join(dir, "data"), os.ModePerm)
+	if err != nil {
+		execErr = err
+		return errors.WithStack(err)
+	}
 	dir, err = os.MkdirTemp(filepath.Join(dir, "data"), "sath_tmp_*")
 	if err != nil {
 		execErr = err
@@ -160,7 +165,11 @@ func RunSingleJob(ctx context.Context) error {
 	status.Status = pb.EnumJobStatus_EJS_RUNNING
 	populateJobStatus(&status)
 
-	hostDir := filepath.Join(g.hostDataDir, filepath.Base(dir))
+	hostDir := dir
+	if len(g.hostDataDir) > 0 {
+		hostDir = filepath.Join(g.hostDataDir, filepath.Base(dir))
+	}
+
 	if err = ExecImage(ctx, job.Cmds, imageConfig.Image(), hostDir, job.VolumePath, func(progress float64) {
 		status.Status = pb.EnumJobStatus_EJS_RUNNING
 		status.Progress = progress

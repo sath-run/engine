@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path"
 
@@ -189,7 +188,7 @@ func ExecImage(
 
 	stdout, err := os.OpenFile(path.Join(dir, "sath.stdout"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
 	if err != nil {
-		log.Fatalf("can't create sath log file: %+v\n", err)
+		return errors.WithStack(err)
 	}
 	defer stdout.Close()
 
