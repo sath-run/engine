@@ -50,6 +50,8 @@ type Global struct {
 	grpcConn     *grpc.ClientConn
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
+
+	hostDataDir string
 }
 
 var g = Global{
@@ -60,6 +62,7 @@ var g = Global{
 type Config struct {
 	GrpcAddress string
 	SSL         bool
+	DataPath    string
 }
 
 func (g *Global) ContextWithToken(ctx context.Context) context.Context {
@@ -76,6 +79,8 @@ func Init(config *Config) error {
 	if g.status != STATUS_UNINITIALIZED {
 		return ErrInitailized
 	}
+
+	g.hostDataDir = config.DataPath
 
 	var credential credentials.TransportCredentials
 	if config.SSL {
