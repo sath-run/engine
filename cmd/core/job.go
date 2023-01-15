@@ -168,7 +168,7 @@ func RunSingleJob(ctx context.Context) error {
 		return errors.WithStack(err)
 	}
 
-	if data, err := os.ReadFile(filepath.Join(dir, "sath_stderr.log")); err == os.ErrNotExist {
+	if data, err := os.ReadFile(filepath.Join(dir, "sath.err")); err == os.ErrNotExist {
 		// nothing to do
 	} else if err != nil {
 		execErr = err

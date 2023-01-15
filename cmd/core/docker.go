@@ -5,9 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"os"
+	"path"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/hpcloud/tail"
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
 )
@@ -32,6 +37,9 @@ type DockerImageConfig struct {
 
 func (config *DockerImageConfig) Image() string {
 	image := config.Repository
+	if config.Tag != "" {
+		image += ":" + config.Tag
+	}
 	if config.Digest != "" {
 		image += "@" + config.Digest
 	}
@@ -46,10 +54,26 @@ func PullImage(ctx context.Context, config *DockerImageConfig, onProgress func(t
 	}
 
 	for _, image := range images {
+		// first try to find a image with full name match
 		for _, repoDigest := range image.RepoDigests {
-			if repoDigest == config.Repository+":"+config.Tag+"@"+config.Digest ||
-				repoDigest == config.Image() {
+			if repoDigest == config.Repository+":"+config.Tag+"@"+config.Digest {
 				return nil
+			}
+		}
+
+		// if not found, find image by digest
+		for _, repoDigest := range image.RepoDigests {
+			if repoDigest == config.Digest {
+				return nil
+			}
+		}
+
+		// if still not found, find image by tag
+		if len(config.Digest) == 0 {
+			for _, tag := range image.RepoTags {
+				if tag == config.Image() {
+					return nil
+				}
 			}
 		}
 	}
@@ -130,36 +154,48 @@ func ExecImage(
 	}
 	defer out.Close()
 
-	scanner := bufio.NewScanner(out)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		var res DockerImageResponse
-
-		if err := json.Unmarshal([]byte(line), &res); err != nil {
-			utils.LogError(errors.WithStack(err))
-			continue
-		}
-
-		if res.Format == "sath" && res.Type == "progress" {
-			var progress ProgressData_V1
-			data, err := json.Marshal(res.Data)
-			if err != nil {
-				utils.LogError(errors.WithStack(err))
-				continue
-			}
-			if err := json.Unmarshal(data, &progress); err != nil {
-				utils.LogError(errors.WithStack(err))
-				continue
-			}
-			onProgress(progress.Progress)
-		}
-
-	}
-
-	if err := scanner.Err(); err != nil {
+	tails, err := tail.TailFile(path.Join(dir, "sath.log"), tail.Config{Follow: true, Logger: tail.DiscardingLogger})
+	if err != nil {
 		return errors.WithStack(err)
 	}
+	defer func() {
+		tails.Stop()
+		tails.Cleanup()
+	}()
+	go func() {
+		for line := range tails.Lines {
+			var res DockerImageResponse
 
+			if err := json.Unmarshal([]byte(line.Text), &res); err != nil {
+				utils.LogError(errors.WithStack(err))
+				continue
+			}
+
+			if res.Format == "sath" && res.Type == "progress" {
+				var progress ProgressData_V1
+				data, err := json.Marshal(res.Data)
+				if err != nil {
+					utils.LogError(errors.WithStack(err))
+					continue
+				}
+				if err := json.Unmarshal(data, &progress); err != nil {
+					utils.LogError(errors.WithStack(err))
+					continue
+				}
+				onProgress(progress.Progress)
+			}
+		}
+	}()
+
+	stdout, err := os.OpenFile(path.Join(dir, "sath.stdout"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
+	if err != nil {
+		log.Fatalf("can't create sath log file: %+v\n", err)
+	}
+	defer stdout.Close()
+
+	_, err = io.Copy(stdout, out)
+	if err != nil {
+		return errors.WithStack(err)
+	}
 	return nil
 }
