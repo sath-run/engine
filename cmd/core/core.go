@@ -12,6 +12,7 @@ import (
 
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
+	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -28,7 +29,6 @@ const (
 	STATUS_WAITING
 	STATUS_STARTING
 	STATUS_RUNNING
-	STATUS_STOPPED
 )
 
 var (
@@ -67,6 +67,21 @@ type Config struct {
 
 func (g *Global) ContextWithToken(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(ctx, "authorization", g.token)
+}
+
+func Status() string {
+	switch g.status {
+	case STATUS_UNINITIALIZED:
+		return "UNINITIALIZED"
+	case STATUS_STARTING:
+		return "STARTING"
+	case STATUS_WAITING:
+		return "WAITING"
+	case STATUS_RUNNING:
+		return "RUNNING"
+	default:
+		return "UNKNOWN"
+	}
 }
 
 func Init(config *Config) error {
@@ -134,7 +149,7 @@ func Init(config *Config) error {
 }
 
 func readToken() string {
-	dir, err := getExecutableDir()
+	dir, err := utils.GetExecutableDir()
 	if err != nil {
 		return ""
 	}
@@ -149,7 +164,7 @@ func readToken() string {
 }
 
 func saveToken(token string, isUser bool) error {
-	dir, err := getExecutableDir()
+	dir, err := utils.GetExecutableDir()
 	if err != nil {
 		return err
 	}
@@ -162,16 +177,6 @@ func saveToken(token string, isUser bool) error {
 	}
 }
 
-func getExecutableDir() (string, error) {
-	executable, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	executable, err = filepath.EvalSymlinks(executable)
-	dir := filepath.Dir(executable)
-	return dir, err
-}
-
 func setupHeartBeat() {
 	go func() {
 		for {
@@ -181,7 +186,7 @@ func setupHeartBeat() {
 			case <-g.heartBeatTicker.C:
 				ctx := g.ContextWithToken(context.Background())
 				info := pb.HeartBeatsRequest{}
-				status := GetCurrentJobStatus()
+				status := GetJobStatus()
 				if status != nil {
 					info.ExecInfos = append(info.ExecInfos, &pb.HeartBeatsRequest_ExecInfo{
 						ExecId:   status.Id,

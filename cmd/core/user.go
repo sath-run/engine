@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
 )
 
@@ -26,7 +27,7 @@ func Login(email string, password string) error {
 }
 
 func Logout() error {
-	dir, err := getExecutableDir()
+	dir, err := utils.GetExecutableDir()
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,8 @@ import (
 	"github.com/sath-run/engine/cmd/core"
 )
 
+const Version = "1.0.0"
+
 func StartService(c *gin.Context) {
 	err := core.Start()
 	if err == core.ErrRunning {
@@ -28,5 +30,12 @@ func StopService(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"message": "sath-engine stopped",
+	})
+}
+
+func GetServiceStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status":  core.Status(),
+		"version": Version,
 	})
 }

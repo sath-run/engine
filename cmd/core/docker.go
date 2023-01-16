@@ -105,14 +105,17 @@ func ExecImage(
 	image string,
 	hostDir string,
 	volumePath string,
+	containerId *string,
 	onProgress func(progress float64)) error {
+
+	hostname := os.Getenv("HOSTNAME")
 
 	cbody, err := g.dockerClient.ContainerCreate(ctx, &container.Config{
 		Cmd:   cmds,
 		Image: image,
 		Tty:   true,
 		Labels: map[string]string{
-			"run.sath.source": "engine",
+			"run.sath.starter": hostname,
 		},
 	}, &container.HostConfig{
 		Binds: []string{
@@ -122,6 +125,10 @@ func ExecImage(
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	if len(cbody.Warnings) > 0 {
+		utils.LogWarning(cbody.Warnings...)
+	}
+	*containerId = cbody.ID
 
 	defer func() {
 		// assign a new background to ctx to make sure the following code still works
@@ -154,7 +161,7 @@ func ExecImage(
 	}
 	defer out.Close()
 
-	dir, err := getExecutableDir()
+	dir, err := utils.GetExecutableDir()
 	if err != nil {
 		return errors.WithStack(err)
 	}

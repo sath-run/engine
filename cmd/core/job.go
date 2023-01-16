@@ -2,13 +2,16 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
 )
 
@@ -40,14 +43,14 @@ var jobContext = struct {
 }{}
 
 type JobStatus struct {
-	Id       string
-	Status   pb.EnumJobStatus
-	Progress float64
-	Message  string
-}
-
-type JobExecResult struct {
-	JobId string
+	Id          string
+	Image       string
+	ContainerId string
+	Status      pb.EnumJobStatus
+	Progress    float64
+	Message     string
+	CreatedAt   time.Time
+	CompletedAt time.Time
 }
 
 func processInputs(dir string, job *pb.JobGetResponse) error {
@@ -97,10 +100,20 @@ func RunSingleJob(ctx context.Context) error {
 		return nil
 	}
 
+	imageConfig := DockerImageConfig{
+		Repository: job.Image.Repository,
+		Digest:     job.Image.Digest,
+		Tag:        job.Image.Tag,
+		Uri:        job.Image.Uri,
+	}
+
 	status := JobStatus{
-		Id:       job.ExecId,
-		Progress: 0,
-		Status:   pb.EnumJobStatus_EJS_READY,
+		Id:          job.ExecId,
+		Status:      pb.EnumJobStatus_EJS_READY,
+		CreatedAt:   time.Now(),
+		CompletedAt: time.Time{},
+		Image:       imageConfig.Image(),
+		Progress:    0,
 	}
 
 	populateJobStatus(&status)
@@ -117,10 +130,18 @@ func RunSingleJob(ctx context.Context) error {
 			status.Status = pb.EnumJobStatus_EJS_SUCCESS
 			status.Progress = 100
 		}
+		status.CompletedAt = time.Now()
+
+		if jobStatusData, err := json.Marshal(status); err == nil {
+			utils.LogJob(jobStatusData)
+		} else {
+			utils.LogError(err)
+		}
+
 		populateJobStatus(&status)
 	}()
 
-	dir, err := getExecutableDir()
+	dir, err := utils.GetExecutableDir()
 	if err != nil {
 		execErr = err
 		return errors.WithStack(err)
@@ -140,13 +161,6 @@ func RunSingleJob(ctx context.Context) error {
 			log.Printf("%+v\n", err)
 		}
 	}()
-
-	imageConfig := DockerImageConfig{
-		Repository: job.Image.Repository,
-		Digest:     job.Image.Digest,
-		Tag:        job.Image.Tag,
-		Uri:        job.Image.Uri,
-	}
 
 	if err = PullImage(ctx, &imageConfig, func(text string) {
 		status.Status = pb.EnumJobStatus_EJS_PULLING_IMAGE
@@ -170,7 +184,7 @@ func RunSingleJob(ctx context.Context) error {
 		hostDir = filepath.Join(g.hostDataDir, filepath.Base(dir))
 	}
 
-	if err = ExecImage(ctx, job.Cmds, imageConfig.Image(), hostDir, job.VolumePath, func(progress float64) {
+	if err := ExecImage(ctx, job.Cmds, imageConfig.Image(), hostDir, job.VolumePath, &status.ContainerId, func(progress float64) {
 		status.Status = pb.EnumJobStatus_EJS_RUNNING
 		status.Progress = progress
 		populateJobStatus(&status)
@@ -259,7 +273,7 @@ func UnsubscribeJobStatus(channel chan JobStatus) {
 	close(channel)
 }
 
-func GetCurrentJobStatus() *JobStatus {
+func GetJobStatus() *JobStatus {
 	jobContext.mu.RLock()
 	defer jobContext.mu.RUnlock()
 
