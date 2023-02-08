@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ func (t JSONTime) MarshalJSON() ([]byte, error) {
 }
 
 var jobLogger *lumberjack.Logger
+var errLogger *lumberjack.Logger
 
 func init() {
 	dir, err := GetExecutableDir()
@@ -31,10 +33,17 @@ func init() {
 	}
 	jobLogger = &lumberjack.Logger{
 		Filename:   filepath.Join(loggerDir, "jobs.log"),
-		MaxSize:    1,    // megabytes
-		MaxBackups: 3,    //
-		MaxAge:     28,   //days
-		Compress:   true, // disabled by default
+		MaxSize:    1,     // megabytes
+		MaxBackups: 3,     //
+		MaxAge:     28,    //days
+		Compress:   false, // disabled by default
+	}
+	errLogger = &lumberjack.Logger{
+		Filename:   filepath.Join(loggerDir, "jobs.log"),
+		MaxSize:    20,    // megabytes
+		MaxBackups: 3,     //
+		MaxAge:     28,    //days
+		Compress:   false, // disabled by default
 	}
 }
 
@@ -49,10 +58,12 @@ func GetExecutableDir() (string, error) {
 }
 
 func LogError(err error) {
-	log.Printf(
+	msg := fmt.Sprintf(
 		"[SATH Err] %v |%+v\n",
 		time.Now().Format("2006/01/02 - 15:04:05"),
 		err)
+	log.Print(msg)
+	errLogger.Write([]byte(msg))
 }
 
 func LogWarning(warnings ...string) {

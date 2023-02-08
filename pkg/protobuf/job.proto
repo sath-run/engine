@@ -3,8 +3,9 @@ package protobuf;
 option go_package = "github.com/sath-run/engine/pkg/protobuf";
 
 message JobGetRequest {
+  string version = 1;
 }
-  
+
 message JobGetResponse {
   string exec_id = 1;
   DockerImage image = 2;

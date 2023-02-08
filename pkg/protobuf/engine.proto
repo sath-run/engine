@@ -36,6 +36,7 @@ enum EnumJobStatus {
   EJS_UNSPECIFIED = 0;
 	EJS_READY = 10;
 	EJS_PULLING_IMAGE = 20;
+  EJS_PROCESSING_INPUTS = 25;
 	EJS_RUNNING = 30;
 	EJS_POPULATING = 40;
 	EJS_SUCCESS = 50;
@@ -51,6 +52,7 @@ message HeartBeatsRequest {
     string message = 4;
   }
   repeated ExecInfo exec_infos = 1;
+  string version = 2;
 }
 
 message HeartBeatsResponse {

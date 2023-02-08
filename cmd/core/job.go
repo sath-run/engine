@@ -3,7 +3,8 @@ package core
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +22,8 @@ func JobStatusText(enum pb.EnumJobStatus) string {
 		return "ready"
 	case pb.EnumJobStatus_EJS_PULLING_IMAGE:
 		return "pulling-image"
+	case pb.EnumJobStatus_EJS_PROCESSING_INPUTS:
+		return "preprocessing"
 	case pb.EnumJobStatus_EJS_RUNNING:
 		return "running"
 	case pb.EnumJobStatus_EJS_POPULATING:
@@ -56,8 +59,35 @@ type JobStatus struct {
 func processInputs(dir string, job *pb.JobGetResponse) error {
 	files := job.GetFiles()
 	for _, file := range files {
-		if uri := file.GetRemote(); uri != nil {
-			// TOOD
+		filePath := filepath.Join(dir, file.Name)
+		if remote := file.GetRemote(); remote != nil {
+			func() error {
+				out, err := os.Create(filePath)
+				if err != nil {
+					return err
+				}
+				defer out.Close()
+
+				if remote.FetchMethod == pb.EnumFileFetchMethod_EFFM_HTTP {
+					resp, err := http.Get(file.GetRemote().Uri)
+					if err != nil {
+						return err
+					}
+					defer resp.Body.Close()
+					if err != nil {
+						return err
+					}
+					_, err = io.Copy(out, resp.Body)
+					if err != nil {
+						return err
+					}
+				} else if remote.FetchMethod == pb.EnumFileFetchMethod_EFFM_GRPC_STREAM {
+					// TODO
+				} else {
+					// TODO
+				}
+				return nil
+			}()
 		} else if data := file.GetData(); len(data) > 0 {
 			if err := os.WriteFile(filepath.Join(dir, file.Name), data, 0644); err != nil {
 				return err
@@ -68,29 +98,33 @@ func processInputs(dir string, job *pb.JobGetResponse) error {
 	return nil
 }
 
-func processOutputs(dir string, job *pb.JobGetResponse) ([]byte, error) {
-	var (
-		data []byte
-		err  error
-	)
+func processOutputs(dir string, job *pb.JobGetResponse) ([]*pb.File, error) {
+	var files []*pb.File
 
-	if len(job.Outputs) == 0 {
-		// TODO
-	} else if len(job.Outputs) > 1 {
-		// TODO
-	} else {
-		data, err = os.ReadFile(filepath.Join(dir, job.Outputs[0]))
-		if err != nil {
+	for _, output := range job.Outputs {
+		data, err := os.ReadFile(filepath.Join(dir, output))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
 			return nil, err
 		}
+		file := &pb.File{
+			Name: output,
+			Content: &pb.File_Data{
+				Data: data,
+			},
+		}
+		files = append(files, file)
 	}
 
-	return data, nil
+	return files, nil
 }
 
 func RunSingleJob(ctx context.Context) error {
 	var execErr error
-	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{})
+	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{
+		Version: VERSION,
+	})
 
 	if err != nil {
 		return err
@@ -157,9 +191,10 @@ func RunSingleJob(ctx context.Context) error {
 		return errors.WithStack(err)
 	}
 	defer func() {
-		if err := os.RemoveAll(dir); err != nil {
-			log.Printf("%+v\n", err)
-		}
+		// if err := os.RemoveAll(dir); err != nil {
+		// 	log.Printf("%+v\n", err)
+		// }
+		fmt.Println(dir)
 	}()
 
 	if err = PullImage(ctx, &imageConfig, func(text string) {
@@ -170,6 +205,9 @@ func RunSingleJob(ctx context.Context) error {
 		execErr = err
 		return errors.WithStack(err)
 	}
+
+	status.Status = pb.EnumJobStatus_EJS_PROCESSING_INPUTS
+	populateJobStatus(&status)
 
 	if err = processInputs(dir, job); err != nil {
 		execErr = err
@@ -213,7 +251,7 @@ func RunSingleJob(ctx context.Context) error {
 		return errors.New(string(data))
 	}
 
-	data, err := processOutputs(dir, job)
+	files, err := processOutputs(dir, job)
 	if err != nil {
 		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
 			ExecId: job.ExecId,
@@ -229,8 +267,8 @@ func RunSingleJob(ctx context.Context) error {
 
 	_, err = g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
 		ExecId: job.ExecId,
-		Result: data,
 		Status: http.StatusOK,
+		Files:  files,
 	})
 
 	if err != nil {

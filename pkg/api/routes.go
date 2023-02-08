@@ -29,6 +29,7 @@ func Init(addr string) {
 			"message": "pong",
 		})
 	})
+	r.GET("/version", GetVersion)
 	r.POST("/services/start", StartService)
 	r.POST("/services/stop", StopService)
 	r.GET("/services/status", GetServiceStatus)

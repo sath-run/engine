@@ -200,7 +200,7 @@ func ExecImage(
 		}
 	}()
 
-	stdout, err := os.OpenFile(path.Join(dir, "sath.stdout"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
+	stdout, err := os.OpenFile(path.Join(dir, "sath.out"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
 	if err != nil {
 		return errors.WithStack(err)
 	}

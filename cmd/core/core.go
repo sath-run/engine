@@ -4,9 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +27,8 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 )
+
+const VERSION = "1.3"
 
 const (
 	STATUS_UNINITIALIZED = iota
@@ -42,8 +48,8 @@ type Global struct {
 	status      int
 	serviceDone chan bool
 
-	heartBeatTicker *time.Ticker
-	heartBeatDone   chan bool
+	heartBeatDone chan bool
+	dumpDone      chan bool
 
 	token        string
 	isUser       bool
@@ -57,6 +63,7 @@ type Global struct {
 var g = Global{
 	serviceDone:   make(chan bool),
 	heartBeatDone: make(chan bool),
+	dumpDone:      make(chan bool),
 }
 
 type Config struct {
@@ -140,9 +147,8 @@ func Init(config *Config) error {
 		saveToken(resp.Token, false)
 	}
 
-	g.heartBeatTicker = time.NewTicker(30 * time.Second)
-	g.heartBeatDone = make(chan bool)
 	setupHeartBeat()
+	setupDump()
 
 	g.status = STATUS_WAITING
 	return nil
@@ -179,13 +185,16 @@ func saveToken(token string, isUser bool) error {
 
 func setupHeartBeat() {
 	go func() {
+		ticker := time.NewTicker(30 * time.Second)
 		for {
 			select {
 			case <-g.heartBeatDone:
 				return
-			case <-g.heartBeatTicker.C:
+			case <-ticker.C:
 				ctx := g.ContextWithToken(context.Background())
-				info := pb.HeartBeatsRequest{}
+				info := pb.HeartBeatsRequest{
+					Version: VERSION,
+				}
 				status := GetJobStatus()
 				if status != nil {
 					info.ExecInfos = append(info.ExecInfos, &pb.HeartBeatsRequest_ExecInfo{
@@ -284,4 +293,87 @@ func getSystemInfo() (string, error) {
 		return "", errors.WithStack(err)
 	}
 	return string(bytes), nil
+}
+
+func setupDump() {
+	if strings.ToLower(os.Getenv("SATH_MODE")) != "docker" {
+		return
+	}
+	dump()
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		for {
+			select {
+			case <-g.dumpDone:
+				return
+			case <-ticker.C:
+				dump()
+			}
+		}
+	}()
+}
+
+func dump() {
+	fmt.Printf("\n=======================================================\n")
+	fmt.Printf(
+		"[SATH DUMP] %v\n",
+		time.Now().Format("2006/01/02 - 15:04:05"),
+	)
+	fmt.Printf("SATH Engine status: %s\n", Status())
+	if jobContext.jobStatus == nil {
+		fmt.Println("No job is running right now")
+	} else {
+		fmt.Println("SATH Engine current jobs:")
+		printJobs([]*JobStatus{jobContext.jobStatus})
+	}
+
+}
+
+func printJobs(jobs []*JobStatus) {
+	fmt.Printf("%-10s %-14s %-10s %-30s %-16s %-16s %-16s\n",
+		"JOB ID", "STATUS", "PROGRESS", "IMAGE", "CONTAINER ID", "CREATED", "COMPLETED")
+	for _, job := range jobs {
+		createdAt := job.CreatedAt
+		completedAt := job.CompletedAt
+		image := strings.Split(job.Image, "@")[0]
+		created := fmtDuration(time.Since(createdAt)) + " ago"
+		completed := ""
+		if !completedAt.IsZero() {
+			completed = fmtDuration(time.Since(completedAt)) + " ago"
+		}
+		containerId := job.ContainerId
+		if len(containerId) > 12 {
+			containerId = containerId[:12]
+		}
+		fmt.Printf("%-10s %-14s %-10.2f %-30s %-16s %-16s %-16s\n",
+			job.Id, job.Status, job.Progress, image, containerId,
+			created,
+			completed,
+		)
+	}
+}
+
+func fmtDuration(d time.Duration) string {
+	if d > time.Hour {
+		amount := math.Round(d.Hours())
+		if amount == 1 {
+			return strconv.Itoa(int(amount)) + " hour"
+		} else {
+			return strconv.Itoa(int(amount)) + " hours"
+		}
+	} else if d > time.Minute {
+		amount := math.Round(d.Minutes())
+		if amount == 1 {
+			return strconv.Itoa(int(amount)) + " minute"
+		} else {
+			return strconv.Itoa(int(amount)) + " minutes"
+		}
+	} else {
+		amount := math.Round(d.Seconds())
+		if amount == 1 {
+			return strconv.Itoa(int(amount)) + " second"
+		} else {
+			return strconv.Itoa(int(amount)) + " seconds"
+		}
+	}
 }
