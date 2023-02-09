@@ -28,7 +28,7 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-const VERSION = "1.3"
+const VERSION = "1.4"
 
 const (
 	STATUS_UNINITIALIZED = iota
