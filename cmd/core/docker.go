@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/docker/cli/opts"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/hpcloud/tail"
@@ -105,10 +106,14 @@ func ExecImage(
 	image string,
 	hostDir string,
 	volumePath string,
+	gpuOpts string,
 	containerId *string,
 	onProgress func(progress float64)) error {
 
 	hostname := os.Getenv("HOSTNAME")
+
+	gpuOptsVal := opts.GpuOpts{}
+	gpuOptsVal.Set(gpuOpts)
 
 	cbody, err := g.dockerClient.ContainerCreate(ctx, &container.Config{
 		Cmd:   cmds,
@@ -121,6 +126,7 @@ func ExecImage(
 		Binds: []string{
 			fmt.Sprintf("%s:%s", hostDir, volumePath),
 		},
+		Resources: container.Resources{DeviceRequests: gpuOptsVal.Value()},
 	}, nil, nil, "")
 	if err != nil {
 		return errors.WithStack(err)

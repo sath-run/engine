@@ -222,11 +222,13 @@ func RunSingleJob(ctx context.Context) error {
 		hostDir = filepath.Join(g.hostDataDir, filepath.Base(dir))
 	}
 
-	if err := ExecImage(ctx, job.Cmds, imageConfig.Image(), hostDir, job.VolumePath, &status.ContainerId, func(progress float64) {
-		status.Status = pb.EnumJobStatus_EJS_RUNNING
-		status.Progress = progress
-		populateJobStatus(&status)
-	}); err != nil {
+	if err := ExecImage(
+		ctx, job.Cmds, imageConfig.Image(), hostDir, job.VolumePath,
+		job.GpuOpts, &status.ContainerId, func(progress float64) {
+			status.Status = pb.EnumJobStatus_EJS_RUNNING
+			status.Progress = progress
+			populateJobStatus(&status)
+		}); err != nil {
 		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
 			ExecId: job.ExecId,
 			Result: []byte(err.Error()),

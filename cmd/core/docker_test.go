@@ -3,10 +3,17 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"testing"
 
+	"github.com/docker/cli/opts"
+	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
+	"github.com/sath-run/engine/cmd/utils"
 )
 
 func TestDockerPull(t *testing.T) {
@@ -37,4 +44,55 @@ func TestDockerPull(t *testing.T) {
 		log.Printf("%+v\n", err)
 		panic(err)
 	}
+}
+
+func TestDockerGPU(t *testing.T) {
+	ctx := context.Background()
+
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(err)
+	}
+
+	gpuOpts := opts.GpuOpts{}
+	gpuOpts.Set("")
+
+	cbody, err := dockerClient.ContainerCreate(ctx, &container.Config{
+		Cmd:   []string{"echo", "hello sath"},
+		Image: "amber-runtime",
+		Tty:   true,
+		Labels: map[string]string{
+			"run.sath.starter": "",
+		},
+	}, &container.HostConfig{
+		Resources: container.Resources{DeviceRequests: gpuOpts.Value()},
+	}, nil, nil, "")
+	if err != nil {
+		panic(err)
+	}
+	if len(cbody.Warnings) > 0 {
+		utils.LogWarning(cbody.Warnings...)
+	}
+	fmt.Println(cbody.ID)
+
+	if err := dockerClient.ContainerStart(ctx, cbody.ID, types.ContainerStartOptions{}); err != nil {
+		panic(err)
+	}
+
+	out, err := dockerClient.ContainerLogs(ctx, cbody.ID, types.ContainerLogsOptions{
+		ShowStdout: true,
+		Follow:     true,
+		Details:    true,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+
+	data, err := io.ReadAll(out)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(string(data))
 }

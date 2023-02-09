@@ -13,6 +13,7 @@ message JobGetResponse {
   string volume_path = 4;
   repeated File files = 5;
   repeated string outputs = 6;
+  string gpu_opts = 7;
 }
 
 message DockerImage {
