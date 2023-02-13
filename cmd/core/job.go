@@ -61,7 +61,7 @@ func processInputs(dir string, job *pb.JobGetResponse) error {
 	for _, file := range files {
 		filePath := filepath.Join(dir, file.Name)
 		if remote := file.GetRemote(); remote != nil {
-			func() error {
+			err := func() error {
 				out, err := os.Create(filePath)
 				if err != nil {
 					return err
@@ -88,6 +88,9 @@ func processInputs(dir string, job *pb.JobGetResponse) error {
 				}
 				return nil
 			}()
+			if err != nil {
+				return err
+			}
 		} else if data := file.GetData(); len(data) > 0 {
 			if err := os.WriteFile(filepath.Join(dir, file.Name), data, 0644); err != nil {
 				return err
