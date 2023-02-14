@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
@@ -69,7 +70,7 @@ func processInputs(dir string, job *pb.JobGetResponse) error {
 				defer out.Close()
 
 				if remote.FetchMethod == pb.EnumFileFetchMethod_EFFM_HTTP {
-					resp, err := http.Get(file.GetRemote().Uri)
+					resp, err := retryablehttp.Get(file.GetRemote().Uri)
 					if err != nil {
 						return err
 					}
