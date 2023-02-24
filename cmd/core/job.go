@@ -2,9 +2,8 @@ package core
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +14,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
+)
+
+var (
+	ErrNoJob = errors.New("No job")
 )
 
 func JobStatusText(enum pb.EnumJobStatus) string {
@@ -125,7 +128,6 @@ func processOutputs(dir string, job *pb.JobGetResponse) ([]*pb.File, error) {
 }
 
 func RunSingleJob(ctx context.Context) error {
-	var execErr error
 	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{
 		Version: VERSION,
 	})
@@ -135,9 +137,48 @@ func RunSingleJob(ctx context.Context) error {
 	}
 
 	if job == nil || len(job.ExecId) == 0 {
-		return nil
+		return ErrNoJob
 	}
 
+	status := JobStatus{
+		Id:        job.ExecId,
+		CreatedAt: time.Now(),
+		Progress:  0,
+	}
+	req, err := runJob(ctx, job, &status)
+	status.CompletedAt = time.Now()
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			status.Status = pb.EnumJobStatus_EJS_CANCELLED
+			status.Message = "user cancelled"
+		} else {
+			status.Status = pb.EnumJobStatus_EJS_ERROR
+			status.Message = err.Error()
+		}
+		req = &pb.JobPopulateRequest{
+			ExecId: job.ExecId,
+			Status: http.StatusInternalServerError,
+			Result: []byte(status.Message),
+		}
+	} else {
+		status.Progress = 100
+		status.Status = pb.EnumJobStatus_EJS_POPULATING
+	}
+
+	populateJobStatus(&status)
+
+	if _, err := g.grpcClient.PopulateJobResult(ctx, req); err != nil {
+		status.Status = pb.EnumJobStatus_EJS_ERROR
+		status.Message = err.Error()
+	} else {
+		status.Status = pb.EnumJobStatus_EJS_SUCCESS
+	}
+	populateJobStatus(&status)
+
+	return err
+}
+
+func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) (*pb.JobPopulateRequest, error) {
 	imageConfig := DockerImageConfig{
 		Repository: job.Image.Repository,
 		Digest:     job.Image.Digest,
@@ -145,81 +186,45 @@ func RunSingleJob(ctx context.Context) error {
 		Uri:        job.Image.Uri,
 	}
 
-	status := JobStatus{
-		Id:          job.ExecId,
-		Status:      pb.EnumJobStatus_EJS_READY,
-		CreatedAt:   time.Now(),
-		CompletedAt: time.Time{},
-		Image:       imageConfig.Image(),
-		Progress:    0,
-	}
-
-	populateJobStatus(&status)
-
-	defer func() {
-		if execErr != nil {
-			if errors.Is(execErr, context.Canceled) {
-				status.Status = pb.EnumJobStatus_EJS_CANCELLED
-			} else {
-				status.Status = pb.EnumJobStatus_EJS_ERROR
-				status.Message = execErr.Error()
-			}
-		} else {
-			status.Status = pb.EnumJobStatus_EJS_SUCCESS
-			status.Progress = 100
-		}
-		status.CompletedAt = time.Now()
-
-		if jobStatusData, err := json.Marshal(status); err == nil {
-			utils.LogJob(jobStatusData)
-		} else {
-			utils.LogError(err)
-		}
-
-		populateJobStatus(&status)
-	}()
+	status.Image = imageConfig.Image()
+	status.Status = pb.EnumJobStatus_EJS_READY
+	populateJobStatus(status)
 
 	dir, err := utils.GetExecutableDir()
 	if err != nil {
-		execErr = err
-		return errors.WithStack(err)
+		return nil, err
 	}
 	err = os.MkdirAll(filepath.Join(dir, "data"), os.ModePerm)
 	if err != nil {
-		execErr = err
-		return errors.WithStack(err)
+		return nil, err
 	}
 	dir, err = os.MkdirTemp(filepath.Join(dir, "data"), "sath_tmp_*")
 	if err != nil {
-		execErr = err
-		return errors.WithStack(err)
+		return nil, err
 	}
 	defer func() {
-		// if err := os.RemoveAll(dir); err != nil {
-		// 	log.Printf("%+v\n", err)
-		// }
-		fmt.Println(dir)
+		if err := os.RemoveAll(dir); err != nil {
+			log.Printf("%+v\n", err)
+		}
 	}()
 
 	if err = PullImage(ctx, &imageConfig, func(text string) {
 		status.Status = pb.EnumJobStatus_EJS_PULLING_IMAGE
 		status.Message = text
-		populateJobStatus(&status)
+		populateJobStatus(status)
 	}); err != nil {
-		execErr = err
-		return errors.WithStack(err)
+		return nil, err
 	}
 
 	status.Status = pb.EnumJobStatus_EJS_PROCESSING_INPUTS
-	populateJobStatus(&status)
+	populateJobStatus(status)
 
 	if err = processInputs(dir, job); err != nil {
-		execErr = err
-		return errors.WithStack(err)
+		return nil, err
 	}
 
 	status.Status = pb.EnumJobStatus_EJS_RUNNING
-	populateJobStatus(&status)
+	populateJobStatus(status)
 
 	hostDir := dir
 	if len(g.hostDataDir) > 0 {
@@ -231,58 +236,27 @@ func RunSingleJob(ctx context.Context) error {
 		job.GpuOpts, &status.ContainerId, func(progress float64) {
 			status.Status = pb.EnumJobStatus_EJS_RUNNING
 			status.Progress = progress
-			populateJobStatus(&status)
+			populateJobStatus(status)
 		}); err != nil {
-		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
-			ExecId: job.ExecId,
-			Result: []byte(err.Error()),
-			Status: http.StatusInternalServerError,
-		})
-		execErr = err
-		return errors.WithStack(err)
+		return nil, err
 	}
 
-	if data, err := os.ReadFile(filepath.Join(dir, "sath.err")); err == os.ErrNotExist {
-		// nothing to do
-	} else if err != nil {
-		execErr = err
-		return err
+	if data, err := os.ReadFile(filepath.Join(dir, "sath.err")); err != nil && err != os.ErrNotExist {
+		return nil, err
 	} else if len(data) > 0 {
-		execErr = err
-		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
-			ExecId: job.ExecId,
-			Result: data,
-			Status: http.StatusInternalServerError,
-		})
-		return errors.New(string(data))
+		return nil, err
 	}
 
 	files, err := processOutputs(dir, job)
 	if err != nil {
-		g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
-			ExecId: job.ExecId,
-			Result: []byte(err.Error()),
-			Status: http.StatusInternalServerError,
-		})
-		execErr = err
-		return errors.WithStack(err)
+		return nil, err
 	}
 
-	status.Status = pb.EnumJobStatus_EJS_POPULATING
-	populateJobStatus(&status)
-
-	_, err = g.grpcClient.PopulateJobResult(ctx, &pb.JobPopulateRequest{
+	return &pb.JobPopulateRequest{
 		ExecId: job.ExecId,
 		Status: http.StatusOK,
 		Files:  files,
-	})
-
-	if err != nil {
-		execErr = err
-		return errors.WithStack(err)
-	}
-
-	return nil
+	}, nil
 }
 
 func populateJobStatus(status *JobStatus) {

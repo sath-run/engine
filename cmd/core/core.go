@@ -248,7 +248,10 @@ func run() {
 	go func() {
 		for !stop {
 			err := RunSingleJob(g.ContextWithToken(ctx))
-			if errors.Is(err, context.Canceled) {
+			if errors.Is(err, ErrNoJob) {
+				log.Println("no job")
+				time.Sleep(time.Second * 90)
+			} else if errors.Is(err, context.Canceled) {
 				log.Println("job cancelled")
 			} else if err != nil {
 				log.Printf("%+v\n", err)
