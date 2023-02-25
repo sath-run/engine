@@ -36,12 +36,13 @@ const (
 	STATUS_WAITING
 	STATUS_STARTING
 	STATUS_RUNNING
+	STATUS_STOPPING
 )
 
 var (
 	ErrInitailized = errors.New("core has already been initailized")
 	ErrRunning     = errors.New("engine is running")
-	ErrStopped     = errors.New("invalid status: STOPPED")
+	ErrStopping    = errors.New("engine is stopping")
 )
 
 type Global struct {
@@ -58,6 +59,7 @@ type Global struct {
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
 
+	cancelJob   context.CancelFunc
 	hostDataDir string
 }
 
@@ -65,6 +67,7 @@ var g = Global{
 	serviceDone:   make(chan bool),
 	heartBeatDone: make(chan bool),
 	dumpDone:      make(chan bool),
+	cancelJob:     nil,
 }
 
 type Config struct {
@@ -86,6 +89,8 @@ func Status() string {
 		return "WAITING"
 	case STATUS_RUNNING:
 		return "RUNNING"
+	case STATUS_STOPPING:
+		return "STOPPING"
 	default:
 		return "UNKNOWN"
 	}
@@ -160,6 +165,10 @@ func Init(config *Config) error {
 		}
 	}
 
+	if err := StopCurrentRunningContainers(g.dockerClient); err != nil {
+		panic(err)
+	}
+	cleanup()
 	setupHeartBeat()
 	setupDump()
 
@@ -228,7 +237,15 @@ func Start() error {
 	defer g.mu.Unlock()
 
 	if g.status == STATUS_RUNNING {
-		return nil
+		return ErrRunning
+	}
+
+	if g.status == STATUS_STOPPING {
+		return ErrStopping
+	}
+
+	if g.status != STATUS_WAITING {
+		return fmt.Errorf("invalid engine status: %s", Status())
 	}
 
 	g.status = STATUS_STARTING
@@ -237,26 +254,33 @@ func Start() error {
 	return nil
 }
 
-func Stop() error {
+func Stop(waitTillJobDone bool) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
+	if g.status == STATUS_STOPPING && !waitTillJobDone {
+		g.cancelJob()
+		return nil
+	}
 
 	if g.status != STATUS_RUNNING {
 		return nil
 	}
-
-	g.serviceDone <- true
-	g.status = STATUS_WAITING
+	g.serviceDone <- waitTillJobDone
+	g.status = STATUS_STOPPING
 	return nil
 }
 
 func run() {
 	ctx, cancel := context.WithCancel(context.Background())
+	g.cancelJob = cancel
 	stop := false
 	go func() {
-		<-g.serviceDone
+		waitTillJobDone := <-g.serviceDone
 		stop = true
-		cancel()
+		if !waitTillJobDone {
+			cancel()
+		}
 	}()
 	go func() {
 		ticker := time.NewTicker(600 * time.Second)
@@ -280,6 +304,9 @@ func run() {
 				}
 			}
 		}
+		g.mu.Lock()
+		g.status = STATUS_WAITING
+		g.mu.Unlock()
 	}()
 }
 

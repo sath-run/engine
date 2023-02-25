@@ -13,6 +13,8 @@ import (
 	"github.com/docker/cli/opts"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/client"
 	"github.com/hpcloud/tail"
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
@@ -215,6 +217,23 @@ func ExecImage(
 	_, err = io.Copy(stdout, out)
 	if err != nil {
 		return errors.WithStack(err)
+	}
+	return nil
+}
+
+func StopCurrentRunningContainers(client *client.Client) error {
+	ctx := context.Background()
+	filter := filters.NewArgs(filters.Arg("label", "run.sath.starter"))
+	containers, err := client.ContainerList(ctx, types.ContainerListOptions{
+		Filters: filter,
+	})
+	if err != nil {
+		return err
+	}
+	for _, container := range containers {
+		if err := client.ContainerStop(ctx, container.ID, nil); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -128,3 +128,21 @@ func TestDockerPrune(t *testing.T) {
 	}
 	spew.Dump(report)
 }
+
+func TestContainerList(t *testing.T) {
+	ctx := context.Background()
+
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(err)
+	}
+
+	filter := filters.NewArgs(filters.Arg("label", "run.sath.starter"))
+	containers, err := dockerClient.ContainerList(ctx, types.ContainerListOptions{
+		Filters: filter,
+	})
+	if err != nil {
+		panic(err)
+	}
+	spew.Dump(containers)
+}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,9 +10,13 @@ import (
 
 func StartService(c *gin.Context) {
 	err := core.Start()
-	if err == core.ErrRunning {
+	if errors.Is(err, core.ErrRunning) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "engine have already been started",
+		})
+	} else if errors.Is(err, core.ErrStopping) {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "engine is stopping, please wait for current job completion",
 		})
 	} else if fatal(c, err) {
 		return
@@ -22,7 +27,13 @@ func StartService(c *gin.Context) {
 }
 
 func StopService(c *gin.Context) {
-	err := core.Stop()
+	var form struct {
+		Wait bool `form:"wait"`
+	}
+	if err := c.ShouldBind(&form); fatal(c, err) {
+		return
+	}
+	err := core.Stop(form.Wait)
 	if fatal(c, err) {
 		return
 	}
