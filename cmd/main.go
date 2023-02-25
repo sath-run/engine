@@ -11,12 +11,6 @@ import (
 	"github.com/sath-run/engine/pkg/api"
 )
 
-var dataPath string
-
-func init() {
-	flag.StringVar(&dataPath, "data", "", "path of data folder")
-}
-
 func main() {
 	flag.Parse()
 	grpcAddr := "scheduler.sath.run:50051"
@@ -32,7 +26,6 @@ func main() {
 	err := core.Init(&core.Config{
 		GrpcAddress: grpcAddr,
 		SSL:         ssl,
-		DataPath:    dataPath,
 	})
 	if err != nil {
 		log.Fatal(err)

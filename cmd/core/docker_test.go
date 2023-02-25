@@ -8,6 +8,7 @@ import (
 	"log"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/cli/opts"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -30,7 +31,6 @@ func TestDockerPull(t *testing.T) {
 	err = PullImage(ctx, &DockerImageConfig{
 		Repository: "zengxinzhy/vinadock",
 		Tag:        "latest",
-		Digest:     "sha256:b5c96c44fcd3b48f30c0dfee99c97bceaa0037b86e15d0f28404d0c1f25dbcfd",
 		Uri:        "",
 	}, func(text string) {
 		var obj gin.H
@@ -95,4 +95,19 @@ func TestDockerGPU(t *testing.T) {
 	}
 
 	fmt.Println(string(data))
+}
+
+func TestDockerInfo(t *testing.T) {
+	ctx := context.Background()
+
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(err)
+	}
+
+	inspect, err := dockerClient.ContainerInspect(ctx, "5c97f54576bdc2558bf70f4a4e8c96057647542d4af71779b1098d7b4b3b419c")
+	if err != nil {
+		panic(err)
+	}
+	spew.Dump(inspect.HostConfig)
 }

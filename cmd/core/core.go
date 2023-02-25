@@ -28,7 +28,7 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-const VERSION = "1.4.1"
+const VERSION = "1.5.0"
 
 const (
 	STATUS_UNINITIALIZED = iota
@@ -69,7 +69,6 @@ var g = Global{
 type Config struct {
 	GrpcAddress string
 	SSL         bool
-	DataPath    string
 }
 
 func (g *Global) ContextWithToken(ctx context.Context) context.Context {
@@ -101,8 +100,6 @@ func Init(config *Config) error {
 	if g.status != STATUS_UNINITIALIZED {
 		return ErrInitailized
 	}
-
-	g.hostDataDir = config.DataPath
 
 	var credential credentials.TransportCredentials
 	if config.SSL {
@@ -145,6 +142,21 @@ func Init(config *Config) error {
 	g.isUser = resp.IsUser
 	if len(token) == 0 {
 		saveToken(resp.Token, false)
+	}
+
+	if strings.ToLower(os.Getenv("SATH_MODE")) == "docker" {
+		hostname := os.Getenv("HOSTNAME")
+		inspect, err := g.dockerClient.ContainerInspect(ctx, hostname)
+		if err != nil {
+			panic(err)
+		}
+		for _, bind := range inspect.HostConfig.Binds {
+			parts := strings.Split(bind, ":")
+			if len(parts) == 2 && parts[1] == "/usr/local/sath/data" {
+				g.hostDataDir = parts[0]
+				break
+			}
+		}
 	}
 
 	setupHeartBeat()
@@ -246,19 +258,45 @@ func run() {
 		cancel()
 	}()
 	go func() {
+		ticker := time.NewTicker(600 * time.Second)
 		for !stop {
-			err := RunSingleJob(g.ContextWithToken(ctx))
-			if errors.Is(err, ErrNoJob) {
-				log.Println("no job")
-				time.Sleep(time.Second * 90)
-			} else if errors.Is(err, context.Canceled) {
-				log.Println("job cancelled")
-			} else if err != nil {
-				log.Printf("%+v\n", err)
-				time.Sleep(time.Second * 5)
+			select {
+			case <-ticker.C:
+				err := cleanup()
+				if err != nil {
+					log.Printf("%+v\n", err)
+				}
+			default:
+				err := RunSingleJob(g.ContextWithToken(ctx))
+				if errors.Is(err, ErrNoJob) {
+					log.Println("no job")
+					time.Sleep(time.Second * 90)
+				} else if errors.Is(err, context.Canceled) {
+					log.Println("job cancelled")
+				} else if err != nil {
+					log.Printf("%+v\n", err)
+					time.Sleep(time.Second * 5)
+				}
 			}
 		}
 	}()
+}
+
+func cleanup() error {
+	// clean up data folder
+	dir, err := utils.GetExecutableDir()
+	if err != nil {
+		return err
+	}
+	dataDir := filepath.Join(dir, "data")
+	if err := os.RemoveAll(dataDir); err != nil {
+		return err
+	}
+	err = os.MkdirAll(dataDir, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func getSystemInfo() (string, error) {

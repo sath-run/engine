@@ -3,6 +3,7 @@ module github.com/sath-run/engine
 go 1.19
 
 require (
+	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/cli v23.0.0+incompatible
 	github.com/docker/docker v20.10.17+incompatible
 	github.com/gin-gonic/gin v1.8.1
