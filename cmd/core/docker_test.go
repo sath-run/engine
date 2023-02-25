@@ -12,6 +12,7 @@ import (
 	"github.com/docker/cli/opts"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
 	"github.com/sath-run/engine/cmd/utils"
@@ -110,4 +111,20 @@ func TestDockerInfo(t *testing.T) {
 		panic(err)
 	}
 	spew.Dump(inspect.HostConfig)
+}
+
+func TestDockerPrune(t *testing.T) {
+	ctx := context.Background()
+
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(err)
+	}
+
+	arg := filters.Arg("label", "run.sath.starter")
+	report, err := dockerClient.ContainersPrune(ctx, filters.NewArgs(arg))
+	if err != nil {
+		panic(err)
+	}
+	spew.Dump(report)
 }

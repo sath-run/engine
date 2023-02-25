@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
@@ -294,6 +295,12 @@ func cleanup() error {
 	}
 	err = os.MkdirAll(dataDir, os.ModePerm)
 	if err != nil {
+		return err
+	}
+
+	// clean up stopped containers
+	arg := filters.Arg("label", "run.sath.starter")
+	if _, err := g.dockerClient.ContainersPrune(context.Background(), filters.NewArgs(arg)); err != nil {
 		return err
 	}
 	return nil
