@@ -1,4 +1,4 @@
-package core
+package core_test
 
 import (
 	"context"
@@ -15,11 +15,12 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/gin-gonic/gin"
+	"github.com/sath-run/engine/cmd/core"
 	"github.com/sath-run/engine/cmd/utils"
 )
 
 func TestDockerPull(t *testing.T) {
-	err := Init(&Config{
+	err := core.Init(&core.Config{
 		GrpcAddress: "localhost:50051",
 	})
 
@@ -29,7 +30,7 @@ func TestDockerPull(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = PullImage(ctx, &DockerImageConfig{
+	err = core.PullImage(ctx, &core.DockerImageConfig{
 		Repository: "zengxinzhy/vinadock",
 		Tag:        "latest",
 		Uri:        "",

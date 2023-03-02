@@ -12,6 +12,7 @@ service engine {
   rpc HeartBeats(HeartBeatsRequest) returns (HeartBeatsResponse);
   rpc GetNewJob(JobGetRequest) returns (JobGetResponse);
   rpc PopulateJobResult(JobPopulateRequest) returns (JobPopulateResponse);
+  rpc RequestFileUpload(FileUploadRequest) returns (FileUploadResponse);
 }
 
 message HandShakeRequest {
@@ -38,6 +39,7 @@ enum EnumJobStatus {
 	EJS_PULLING_IMAGE = 20;
   EJS_PROCESSING_INPUTS = 25;
 	EJS_RUNNING = 30;
+  EJS_PROCESSING_OUPUTS = 35;
 	EJS_POPULATING = 40;
 	EJS_SUCCESS = 50;
 	EJS_CANCELLED = 60;
@@ -52,10 +54,9 @@ message HeartBeatsRequest {
     string message = 4;
   }
   repeated ExecInfo exec_infos = 1;
-  string version = 2;
+  string spare = 2;
 }
 
 message HeartBeatsResponse {
 
 }
-

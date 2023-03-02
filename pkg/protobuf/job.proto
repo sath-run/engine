@@ -64,3 +64,39 @@ message JobPopulateRequest {
 message JobPopulateResponse {
 
 }
+
+enum EnumOperation {
+  EO_UNSPECIFIED = 0;
+  EO_EXECUTION = 1;
+}
+
+message FileInfo {
+  string name = 1;
+  uint64 size = 2;
+}
+
+enum EnumFileUploadOperation {
+  EFUO_UNSPECIFIED = 0;
+  EFUO_EMBED = 10;
+  EFUO_HTTP_POST = 20;
+  EFUO_HTTP_PUT = 21;
+  EFUO_GRPC_STREAM = 30;
+}
+
+message FileUploadInfo {
+  EnumFileUploadOperation op = 1;
+  string id = 2;
+  string url = 3;
+  map<string, string> headers = 4; 
+  map<string, string> data = 5;
+}
+
+message FileUploadRequest {
+  EnumOperation operation = 1;
+  string operation_id = 2;
+  repeated FileInfo files = 3;
+}
+
+message FileUploadResponse {
+  repeated FileUploadInfo infos = 1; 
+}

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -30,6 +31,8 @@ func JobStatusText(enum pb.EnumJobStatus) string {
 		return "preprocessing"
 	case pb.EnumJobStatus_EJS_RUNNING:
 		return "running"
+	case pb.EnumJobStatus_EJS_PROCESSING_OUPUTS:
+		return "uploading"
 	case pb.EnumJobStatus_EJS_POPULATING:
 		return "populating"
 	case pb.EnumJobStatus_EJS_SUCCESS:
@@ -105,26 +108,92 @@ func processInputs(dir string, job *pb.JobGetResponse) error {
 	return nil
 }
 
-func processOutputs(dir string, job *pb.JobGetResponse) ([]*pb.File, error) {
-	var files []*pb.File
-
-	for _, output := range job.Outputs {
-		data, err := os.ReadFile(filepath.Join(dir, output))
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		} else if err != nil {
+func ProcessOutputs(dir string, execId string, outputs []string) ([]*pb.File, error) {
+	req := &pb.FileUploadRequest{
+		Operation:   pb.EnumOperation_EO_EXECUTION,
+		OperationId: execId,
+	}
+	for _, output := range outputs {
+		path := filepath.Join(dir, output)
+		stat, err := os.Stat(path)
+		if err != nil {
 			return nil, err
 		}
-		file := &pb.File{
-			Name: output,
-			Content: &pb.File_Data{
-				Data: data,
-			},
+		base := filepath.Base(output)
+		req.Files = append(req.Files, &pb.FileInfo{
+			Name: base,
+			Size: uint64(stat.Size()),
+		})
+	}
+	res, err := g.grpcClient.RequestFileUpload(g.ContextWithToken(context.Background()), req)
+	if err != nil {
+		return nil, err
+	}
+	if len(res.Infos) != len(outputs) {
+		return nil, fmt.Errorf("res info length does not equal: %d : %d", len(res.Infos), len(outputs))
+	}
+
+	var files []*pb.File
+	for i, output := range outputs {
+		info := res.Infos[i]
+		path := filepath.Join(dir, output)
+		file, err := processOutput(info, path)
+		if err != nil {
+			return nil, err
 		}
 		files = append(files, file)
 	}
 
 	return files, nil
+}
+
+func processOutput(info *pb.FileUploadInfo, path string) (*pb.File, error) {
+	var file = &pb.File{
+		Name: filepath.Base(path),
+	}
+	switch info.GetOp() {
+	case pb.EnumFileUploadOperation_EFUO_EMBED:
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		file.Content = &pb.File_Data{
+			Data: data,
+		}
+	case pb.EnumFileUploadOperation_EFUO_HTTP_PUT, pb.EnumFileUploadOperation_EFUO_HTTP_POST:
+		var method = "POST"
+		if info.GetOp() == pb.EnumFileUploadOperation_EFUO_HTTP_PUT {
+			method = "PUT"
+		}
+		f, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		req, err := retryablehttp.NewRequest(method, info.Url, f)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range info.Headers {
+			req.Header.Add(key, value)
+		}
+		res, err := retryablehttp.NewClient().Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer res.Body.Close()
+		if res.StatusCode < 200 || res.StatusCode >= 400 {
+			body, _ := io.ReadAll(res.Body)
+			return nil, errors.Errorf("file upload err, code: %d, body: %s", res.StatusCode, string(body))
+		}
+		file.Content = &pb.File_Remote{
+			Remote: &pb.FileUri{
+				Uri: info.Id,
+			},
+		}
+	default:
+		return nil, fmt.Errorf("unsupported op: %s", info.Op.String())
+	}
+	return file, nil
 }
 
 func RunSingleJob(ctx context.Context) error {
@@ -145,7 +214,11 @@ func RunSingleJob(ctx context.Context) error {
 		CreatedAt: time.Now(),
 		Progress:  0,
 	}
-	req, err := runJob(ctx, job, &status)
+	var req = &pb.JobPopulateRequest{
+		ExecId: job.ExecId,
+		Status: http.StatusOK,
+	}
+	files, err := runJob(ctx, job, &status)
 	status.CompletedAt = time.Now()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -154,13 +227,12 @@ func RunSingleJob(ctx context.Context) error {
 		} else {
 			status.Status = pb.EnumJobStatus_EJS_ERROR
 			status.Message = err.Error()
+			log.Printf("%+v\n", err)
 		}
-		req = &pb.JobPopulateRequest{
-			ExecId: job.ExecId,
-			Status: http.StatusInternalServerError,
-			Result: []byte(status.Message),
-		}
+		req.Status = http.StatusInternalServerError
+		req.Result = []byte(status.Message)
 	} else {
+		req.Files = files
 		status.Progress = 100
 		status.Status = pb.EnumJobStatus_EJS_POPULATING
 	}
@@ -178,7 +250,7 @@ func RunSingleJob(ctx context.Context) error {
 	return err
 }
 
-func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) (*pb.JobPopulateRequest, error) {
+func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) ([]*pb.File, error) {
 	imageConfig := DockerImageConfig{
 		Repository: job.Image.Repository,
 		Digest:     job.Image.Digest,
@@ -247,16 +319,15 @@ func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) (*pb
 		return nil, err
 	}
 
-	files, err := processOutputs(dir, job)
+	status.Status = pb.EnumJobStatus_EJS_PROCESSING_OUPUTS
+	populateJobStatus(status)
+
+	files, err := ProcessOutputs(dir, job.ExecId, job.Outputs)
 	if err != nil {
 		return nil, err
 	}
 
-	return &pb.JobPopulateRequest{
-		ExecId: job.ExecId,
-		Status: http.StatusOK,
-		Files:  files,
-	}, nil
+	return files, nil
 }
 
 func populateJobStatus(status *JobStatus) {

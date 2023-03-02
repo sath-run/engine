@@ -76,7 +76,9 @@ type Config struct {
 }
 
 func (g *Global) ContextWithToken(ctx context.Context) context.Context {
-	return metadata.AppendToOutgoingContext(ctx, "authorization", g.token)
+	return metadata.AppendToOutgoingContext(ctx,
+		"authorization", g.token,
+		"version", VERSION)
 }
 
 func Status() string {
@@ -214,9 +216,7 @@ func setupHeartBeat() {
 				return
 			case <-ticker.C:
 				ctx := g.ContextWithToken(context.Background())
-				info := pb.HeartBeatsRequest{
-					Version: VERSION,
-				}
+				info := pb.HeartBeatsRequest{}
 				status := GetJobStatus()
 				if status != nil {
 					info.ExecInfos = append(info.ExecInfos, &pb.HeartBeatsRequest_ExecInfo{
