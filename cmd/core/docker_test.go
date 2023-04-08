@@ -30,7 +30,7 @@ func TestDockerPull(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = core.PullImage(ctx, &core.DockerImageConfig{
+	err = core.PullImage(ctx, nil, &core.DockerImageConfig{
 		Repository: "zengxinzhy/vinadock",
 		Tag:        "latest",
 		Uri:        "",
@@ -146,4 +146,31 @@ func TestContainerList(t *testing.T) {
 		panic(err)
 	}
 	spew.Dump(containers)
+}
+
+func TestMdImage(t *testing.T) {
+	ctx := context.Background()
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		panic(err)
+	}
+	var containerId string
+	var dir = "/tmp/sath/sath_tmp_1605421609"
+	err = core.ExecImage(
+		ctx,
+		dockerClient,
+		[]string{"amber"},
+		"zengxinzhy/amber-runtime-cuda11.4.2:1.2",
+		dir,
+		dir,
+		"/data",
+		"all",
+		&containerId,
+		func(progress float64) {
+			log.Printf("progress: %f\n", progress)
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
 }

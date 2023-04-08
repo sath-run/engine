@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 
 	"github.com/docker/cli/opts"
 	"github.com/docker/docker/api/types"
@@ -49,9 +48,9 @@ func (config *DockerImageConfig) Image() string {
 	return image
 }
 
-func PullImage(ctx context.Context, config *DockerImageConfig, onProgress func(text string)) error {
+func PullImage(ctx context.Context, dockerClient *client.Client, config *DockerImageConfig, onProgress func(text string)) error {
 	// look for local images to see if any mathces given id
-	images, err := g.dockerClient.ImageList(ctx, types.ImageListOptions{})
+	images, err := dockerClient.ImageList(ctx, types.ImageListOptions{})
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -87,7 +86,7 @@ func PullImage(ctx context.Context, config *DockerImageConfig, onProgress func(t
 	}
 
 	// pull image from remote
-	reader, err := g.dockerClient.ImagePull(context.Background(), uri, types.ImagePullOptions{})
+	reader, err := dockerClient.ImagePull(context.Background(), uri, types.ImagePullOptions{})
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -104,25 +103,27 @@ func PullImage(ctx context.Context, config *DockerImageConfig, onProgress func(t
 
 func ExecImage(
 	ctx context.Context,
+	client *client.Client,
 	cmds []string,
 	image string,
+	localDataDir string,
 	hostDir string,
 	volumePath string,
 	gpuOpts string,
 	containerId *string,
 	onProgress func(progress float64)) error {
 
-	hostname := os.Getenv("HOSTNAME")
+	fmt.Println(cmds, image, localDataDir, hostDir, volumePath, gpuOpts)
 
 	gpuOptsVal := opts.GpuOpts{}
 	gpuOptsVal.Set(gpuOpts)
 
-	cbody, err := g.dockerClient.ContainerCreate(ctx, &container.Config{
+	cbody, err := client.ContainerCreate(ctx, &container.Config{
 		Cmd:   cmds,
 		Image: image,
 		Tty:   true,
 		Labels: map[string]string{
-			"run.sath.starter": hostname,
+			"run.sath.starter": os.Getenv("HOSTNAME"),
 		},
 	}, &container.HostConfig{
 		Binds: []string{
@@ -142,11 +143,11 @@ func ExecImage(
 		// assign a new background to ctx to make sure the following code still works
 		// in case the original ctx was cancelled
 		ctx = context.Background()
-		if err = g.dockerClient.ContainerStop(ctx, cbody.ID, nil); err != nil {
+		if err = client.ContainerStop(ctx, cbody.ID, nil); err != nil {
 			utils.LogError(errors.WithStack(err))
 			return
 		}
-		if err = g.dockerClient.ContainerRemove(ctx, cbody.ID, types.ContainerRemoveOptions{
+		if err = client.ContainerRemove(ctx, cbody.ID, types.ContainerRemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
 		}); err != nil {
@@ -155,11 +156,11 @@ func ExecImage(
 		}
 	}()
 
-	if err := g.dockerClient.ContainerStart(ctx, cbody.ID, types.ContainerStartOptions{}); err != nil {
+	if err := client.ContainerStart(ctx, cbody.ID, types.ContainerStartOptions{}); err != nil {
 		return err
 	}
 
-	out, err := g.dockerClient.ContainerLogs(ctx, cbody.ID, types.ContainerLogsOptions{
+	out, err := client.ContainerLogs(ctx, cbody.ID, types.ContainerLogsOptions{
 		ShowStdout: true,
 		Follow:     true,
 		Details:    true,
@@ -169,13 +170,7 @@ func ExecImage(
 	}
 	defer out.Close()
 
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	dir = filepath.Join(dir, "data", filepath.Base(hostDir))
-
-	tails, err := tail.TailFile(path.Join(dir, "sath.log"), tail.Config{Follow: true, Logger: tail.DiscardingLogger})
+	tails, err := tail.TailFile(path.Join(localDataDir, "sath.log"), tail.Config{Follow: true, Logger: tail.DiscardingLogger})
 	if err != nil {
 		return errors.WithStack(err)
 	}
@@ -208,7 +203,7 @@ func ExecImage(
 		}
 	}()
 
-	stdout, err := os.OpenFile(path.Join(dir, "sath.out"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
+	stdout, err := os.OpenFile(path.Join(localDataDir, "sath.out"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0664)
 	if err != nil {
 		return errors.WithStack(err)
 	}

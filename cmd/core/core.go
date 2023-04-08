@@ -59,8 +59,9 @@ type Global struct {
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
 
-	cancelJob   context.CancelFunc
-	hostDataDir string
+	cancelJob    context.CancelFunc
+	hostDataDir  string
+	localDataDir string
 }
 
 var g = Global{
@@ -73,12 +74,17 @@ var g = Global{
 type Config struct {
 	GrpcAddress string
 	SSL         bool
+	DataDir     string
 }
 
 func (g *Global) ContextWithToken(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(ctx,
 		"authorization", g.token,
 		"version", VERSION)
+}
+
+func GetDockerClient() *client.Client {
+	return g.dockerClient
 }
 
 func Status() string {
@@ -152,6 +158,16 @@ func Init(config *Config) error {
 		saveToken(resp.Token, false)
 	}
 
+	if len(config.DataDir) > 0 {
+		g.localDataDir = config.DataDir
+	} else if dir, err := utils.GetExecutableDir(); err != nil {
+		panic(err)
+	} else if err := os.MkdirAll(filepath.Join(dir, "data"), os.ModePerm); err != nil {
+		panic(err)
+	} else {
+		g.localDataDir = filepath.Join(dir, "data")
+	}
+
 	if strings.ToLower(os.Getenv("SATH_MODE")) == "docker" {
 		hostname := os.Getenv("HOSTNAME")
 		inspect, err := g.dockerClient.ContainerInspect(ctx, hostname)
@@ -160,7 +176,7 @@ func Init(config *Config) error {
 		}
 		for _, bind := range inspect.HostConfig.Binds {
 			parts := strings.Split(bind, ":")
-			if len(parts) == 2 && parts[1] == "/usr/local/sath/data" {
+			if len(parts) == 2 && parts[1] == g.localDataDir {
 				g.hostDataDir = parts[0]
 				break
 			}

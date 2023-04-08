@@ -13,7 +13,6 @@ import (
 
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
-	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
 )
 
@@ -109,6 +108,9 @@ func processInputs(dir string, job *pb.JobGetResponse) error {
 }
 
 func ProcessOutputs(dir string, execId string, outputs []string) ([]*pb.File, error) {
+	if len(outputs) == 0 {
+		return nil, nil
+	}
 	req := &pb.FileUploadRequest{
 		Operation:   pb.EnumOperation_EO_EXECUTION,
 		OperationId: execId,
@@ -218,7 +220,7 @@ func RunSingleJob(ctx context.Context) error {
 		ExecId: job.ExecId,
 		Status: http.StatusOK,
 	}
-	files, err := runJob(ctx, job, &status)
+	files, err := RunJob(ctx, job, &status)
 	status.CompletedAt = time.Now()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
@@ -250,7 +252,7 @@ func RunSingleJob(ctx context.Context) error {
 	return err
 }
 
-func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) ([]*pb.File, error) {
+func RunJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) ([]*pb.File, error) {
 	imageConfig := DockerImageConfig{
 		Repository: job.Image.Repository,
 		Digest:     job.Image.Digest,
@@ -262,15 +264,7 @@ func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) ([]*
 	status.Status = pb.EnumJobStatus_EJS_READY
 	populateJobStatus(status)
 
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return nil, err
-	}
-	err = os.MkdirAll(filepath.Join(dir, "data"), os.ModePerm)
-	if err != nil {
-		return nil, err
-	}
-	dir, err = os.MkdirTemp(filepath.Join(dir, "data"), "sath_tmp_*")
+	dir, err := os.MkdirTemp(g.localDataDir, "sath_tmp_*")
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +274,7 @@ func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) ([]*
 		}
 	}()
 
-	if err = PullImage(ctx, &imageConfig, func(text string) {
+	if err = PullImage(ctx, g.dockerClient, &imageConfig, func(text string) {
 		status.Status = pb.EnumJobStatus_EJS_PULLING_IMAGE
 		status.Message = text
 		populateJobStatus(status)
@@ -298,13 +292,14 @@ func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) ([]*
 	status.Status = pb.EnumJobStatus_EJS_RUNNING
 	populateJobStatus(status)
 
-	hostDir := dir
+	localDataDir := dir
+	hostDir := localDataDir
 	if len(g.hostDataDir) > 0 {
 		hostDir = filepath.Join(g.hostDataDir, filepath.Base(dir))
 	}
 
 	if err := ExecImage(
-		ctx, job.Cmds, imageConfig.Image(), hostDir, job.VolumePath,
+		ctx, g.dockerClient, job.Cmds, imageConfig.Image(), localDataDir, hostDir, job.VolumePath,
 		job.GpuOpts, &status.ContainerId, func(progress float64) {
 			status.Status = pb.EnumJobStatus_EJS_RUNNING
 			status.Progress = progress
@@ -313,7 +308,7 @@ func runJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) ([]*
 		return nil, err
 	}
 
-	if data, err := os.ReadFile(filepath.Join(dir, "sath.err")); err != nil && err != os.ErrNotExist {
+	if data, err := os.ReadFile(filepath.Join(dir, "sath.err")); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	} else if len(data) > 0 {
 		return nil, err
