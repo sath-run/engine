@@ -54,7 +54,6 @@ type Global struct {
 	dumpDone      chan bool
 
 	token        string
-	isUser       bool
 	grpcConn     *grpc.ClientConn
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
@@ -105,6 +104,7 @@ func Status() string {
 }
 
 func Init(config *Config) error {
+	utils.LogDebug("initializing core")
 	// // Set up a connection to the server.
 	var err error
 
@@ -136,26 +136,25 @@ func Init(config *Config) error {
 		return errors.WithStack(err)
 	}
 
-	ctx := context.Background()
-	token := readToken()
+	g.token = readToken()
 	sysInfo := ""
-	if len(token) > 0 {
-		ctx = metadata.AppendToOutgoingContext(context.Background(), "authorization", token)
-	} else {
-		if sysInfo, err = getSystemInfo(); err != nil {
-			return err
-		}
+
+	if sysInfo, err = getSystemInfo(); err != nil {
+		return err
 	}
-	resp, err := g.grpcClient.HandShake(ctx, &pb.HandShakeRequest{
+	resp, err := g.grpcClient.HandShake(g.ContextWithToken(context.TODO()), &pb.HandShakeRequest{
 		SystemInfo: sysInfo,
 	})
 	if err != nil {
 		return errors.WithStack(err)
 	}
-	g.token = resp.Token
-	g.isUser = resp.IsUser
-	if len(token) == 0 {
-		saveToken(resp.Token, false)
+	if len(resp.Token) == 0 {
+		return errors.New("handshake did not get token")
+	} else if g.token != resp.Token {
+		if err := saveToken(resp.Token); err != nil {
+			return err
+		}
+		g.token = resp.Token
 	}
 
 	if len(config.DataDir) > 0 {
@@ -169,8 +168,11 @@ func Init(config *Config) error {
 	}
 
 	if strings.ToLower(os.Getenv("SATH_MODE")) == "docker" {
-		hostname := os.Getenv("HOSTNAME")
-		inspect, err := g.dockerClient.ContainerInspect(ctx, hostname)
+		containerId, err := GetCurrentContainerId()
+		if err != nil {
+			panic(err)
+		}
+		inspect, err := g.dockerClient.ContainerInspect(context.TODO(), containerId)
 		if err != nil {
 			panic(err)
 		}
@@ -191,6 +193,7 @@ func Init(config *Config) error {
 	setupDump()
 
 	g.status = STATUS_WAITING
+	utils.LogDebug("core initialized")
 	return nil
 }
 
@@ -199,28 +202,19 @@ func readToken() string {
 	if err != nil {
 		return ""
 	}
-	bytes, err := os.ReadFile(filepath.Join(dir, ".user.token"))
+	bytes, err := os.ReadFile(filepath.Join(dir, ".sath.token"))
 	if err != nil {
-		bytes, err = os.ReadFile(filepath.Join(dir, ".device.token"))
-		if err != nil {
-			return ""
-		}
+		return ""
 	}
 	return string(bytes)
 }
 
-func saveToken(token string, isUser bool) error {
+func saveToken(token string) error {
 	dir, err := utils.GetExecutableDir()
 	if err != nil {
 		return err
 	}
-
-	if isUser {
-		return os.WriteFile(filepath.Join(dir, ".user.token"), []byte(token), 0666)
-
-	} else {
-		return os.WriteFile(filepath.Join(dir, ".device.token"), []byte(token), 0666)
-	}
+	return os.WriteFile(filepath.Join(dir, ".sath.token"), []byte(token), 0666)
 }
 
 func setupHeartBeat() {
@@ -233,7 +227,7 @@ func setupHeartBeat() {
 			case <-ticker.C:
 				ctx := g.ContextWithToken(context.Background())
 				info := pb.HeartBeatsRequest{}
-				status := GetJobStatus()
+				status := GetTaskStatus()
 				if status != nil {
 					info.ExecInfos = append(info.ExecInfos, &pb.HeartBeatsRequest_ExecInfo{
 						ExecId:   status.Id,
@@ -311,12 +305,12 @@ func run() {
 				err := RunSingleJob(g.ContextWithToken(ctx))
 				if errors.Is(err, ErrNoJob) {
 					log.Println("no job")
-					time.Sleep(time.Second * 90)
+					time.Sleep(time.Second * 60)
 				} else if errors.Is(err, context.Canceled) {
 					log.Println("job cancelled")
 				} else if err != nil {
 					log.Printf("%+v\n", err)
-					time.Sleep(time.Second * 5)
+					time.Sleep(time.Second * 60)
 				}
 			}
 		}
@@ -327,18 +321,20 @@ func run() {
 }
 
 func cleanup() error {
-	// clean up data folder
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return err
-	}
-	dataDir := filepath.Join(dir, "data")
-	if err := os.RemoveAll(dataDir); err != nil {
-		return err
-	}
-	err = os.MkdirAll(dataDir, os.ModePerm)
-	if err != nil {
-		return err
+	if g.status == STATUS_UNINITIALIZED {
+		// clean up data folder
+		dir, err := utils.GetExecutableDir()
+		if err != nil {
+			return err
+		}
+		dataDir := filepath.Join(dir, "data")
+		if err := os.RemoveAll(dataDir); err != nil {
+			return err
+		}
+		err = os.MkdirAll(dataDir, os.ModePerm)
+		if err != nil {
+			return err
+		}
 	}
 
 	// clean up stopped containers
@@ -411,33 +407,33 @@ func dump() {
 		time.Now().Format("2006/01/02 - 15:04:05"),
 	)
 	fmt.Printf("SATH Engine status: %s\n", Status())
-	if jobContext.jobStatus == nil {
+	if taskContext.status == nil {
 		fmt.Println("No job is running right now")
 	} else {
 		fmt.Println("SATH Engine current jobs:")
-		printJobs([]*JobStatus{jobContext.jobStatus})
+		printJobs([]*TaskStatus{taskContext.status})
 	}
 
 }
 
-func printJobs(jobs []*JobStatus) {
+func printJobs(tasks []*TaskStatus) {
 	fmt.Printf("%-10s %-14s %-10s %-30s %-16s %-16s %-16s\n",
 		"JOB ID", "STATUS", "PROGRESS", "IMAGE", "CONTAINER ID", "CREATED", "COMPLETED")
-	for _, job := range jobs {
-		createdAt := job.CreatedAt
-		completedAt := job.CompletedAt
-		image := strings.Split(job.Image, "@")[0]
+	for _, task := range tasks {
+		createdAt := task.CreatedAt
+		completedAt := task.CompletedAt
+		image := task.ImageUrl
 		created := fmtDuration(time.Since(createdAt)) + " ago"
 		completed := ""
 		if !completedAt.IsZero() {
 			completed = fmtDuration(time.Since(completedAt)) + " ago"
 		}
-		containerId := job.ContainerId
+		containerId := task.ContainerId
 		if len(containerId) > 12 {
 			containerId = containerId[:12]
 		}
 		fmt.Printf("%-10s %-14s %-10.2f %-30s %-16s %-16s %-16s\n",
-			job.Id, job.Status, job.Progress, image, containerId,
+			task.Id, task.Status, task.Progress, image, containerId,
 			created,
 			completed,
 		)

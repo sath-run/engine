@@ -1,7 +1,10 @@
 package utils
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -66,19 +69,80 @@ func LogError(err error) {
 	errLogger.Write([]byte(msg))
 }
 
-func LogWarning(warnings ...string) {
+func LogDebug(a ...any) {
+	if os.Getenv("SATH_MODE") == "debug" {
+		messages := make([]interface{}, 0)
+		messages = append(messages,
+			"[SATH DEBUG] ",
+			time.Now().Format("2006/01/02 - 15:04:05"),
+			" | ")
+		messages = append(messages, a...)
+		fmt.Println(messages...)
+	}
+}
+
+func LogWarning(a ...any) {
 	messages := make([]interface{}, 0)
 	messages = append(messages,
 		"[SATH Warning] ",
 		time.Now().Format("2006/01/02 - 15:04:05"),
 		" | ")
-	for _, warning := range warnings {
-		messages = append(messages, warning)
-	}
+	messages = append(messages, a...)
 	log.Println(messages...)
 }
 
 func LogJob(content []byte) {
 	jobLogger.Write(content)
 	jobLogger.Write([]byte("\n"))
+}
+func Compress(src string, buf io.Writer) error {
+	// tar > gzip > buf
+	zr := gzip.NewWriter(buf)
+	tw := tar.NewWriter(zr)
+
+	// walk through every file in the folder
+	filepath.Walk(src, func(file string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// generate tar header
+		header, err := tar.FileInfoHeader(fi, file)
+		if err != nil {
+			return err
+		}
+
+		// must provide real name
+		// (see https://golang.org/src/archive/tar/common.go?#L626)
+		header.Name, err = filepath.Rel(src, filepath.ToSlash(file))
+		if err != nil {
+			return err
+		}
+
+		// write header
+		if err := tw.WriteHeader(header); err != nil {
+			return err
+		}
+		// if not a dir, write file content
+		if !fi.IsDir() {
+			data, err := os.Open(file)
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(tw, data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	// produce tar
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	// produce gzip
+	if err := zr.Close(); err != nil {
+		return err
+	}
+	//
+	return nil
 }

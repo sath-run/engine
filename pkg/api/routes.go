@@ -20,7 +20,7 @@ func fatal(c *gin.Context, err error) bool {
 	}
 }
 func Init(addr string) {
-
+	utils.LogDebug("initializing api")
 	r := gin.Default()
 	r.SetTrustedProxies([]string{"127.0.0.1"})
 
@@ -33,8 +33,8 @@ func Init(addr string) {
 	r.POST("/services/start", StartService)
 	r.POST("/services/stop", StopService)
 	r.GET("/services/status", GetServiceStatus)
-	r.GET("/jobs/stream", StreamJobStatus)
-	r.GET("/jobs", GetJobStatus)
+	r.GET("/jobs/stream", StreamTaskStatus)
+	r.GET("/jobs", GetTaskStatus)
 	r.POST("/users/login", Login)
 	r.POST("/users/logout", Logout)
 	r.GET("/users/token", GetToken)

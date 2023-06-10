@@ -30,11 +30,7 @@ func TestDockerPull(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = core.PullImage(ctx, nil, &core.DockerImageConfig{
-		Repository: "zengxinzhy/vinadock",
-		Tag:        "latest",
-		Uri:        "",
-	}, func(text string) {
+	err = core.PullImage(ctx, nil, "zengxinzhy/vinadock", func(text string) {
 		var obj gin.H
 		if err := json.Unmarshal([]byte(text), &obj); err != nil {
 			panic(err)
@@ -73,7 +69,11 @@ func TestDockerGPU(t *testing.T) {
 		panic(err)
 	}
 	if len(cbody.Warnings) > 0 {
-		utils.LogWarning(cbody.Warnings...)
+		var msg []any
+		for _, obj := range cbody.Warnings {
+			msg = append(msg, obj)
+		}
+		utils.LogWarning(msg...)
 	}
 	fmt.Println(cbody.ID)
 
@@ -148,29 +148,85 @@ func TestContainerList(t *testing.T) {
 	spew.Dump(containers)
 }
 
-func TestMdImage(t *testing.T) {
+func TestVinaImage(t *testing.T) {
 	ctx := context.Background()
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
-	if err != nil {
-		panic(err)
+	checkErr(err)
+	cmds := []string{
+		"bin/qvina02",
+		"--receptor", "/data/8HDO.pdbqt",
+		"--ligand", "/data/SVR.pdbqt",
+		"--center_x", "138.27592581289787",
+		"--center_y", "127.76051810935691",
+		"--center_z", "106.25829569498698",
+		"--size_x", "18.5", "--size_y", "18.5", "--size_z", "18.5",
+		"--out", "/output/out.txt",
+		"--log", "/output/log.txt",
 	}
-	var containerId string
-	var dir = "/tmp/sath/sath_tmp_1605421609"
-	err = core.ExecImage(
-		ctx,
-		dockerClient,
-		[]string{"amber"},
-		"zengxinzhy/amber-runtime-cuda11.4.2:1.2",
-		dir,
-		dir,
-		"/data",
-		"all",
-		&containerId,
-		func(progress float64) {
-			log.Printf("progress: %f\n", progress)
-		},
-	)
-	if err != nil {
-		panic(err)
-	}
+	containerId, err := core.CreateContainer(ctx, dockerClient, cmds, "zengxinzhy/vina", "", "vina_test", []string{
+		"/Users/xinzeng/Downloads/vina:/data",
+		"/Users/xinzeng/Downloads/output:/output",
+	})
+	checkErr(err)
+	fmt.Println("containerId: ", containerId)
+	err = core.ExecImage(ctx, dockerClient, containerId, func(line string) {
+		fmt.Println(line)
+	})
+	checkErr(err)
 }
+
+// func TestMdImage(t *testing.T) {
+// 	ctx := context.Background()
+// 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	var containerId string
+// 	var dir = "/tmp/sath/sath_tmp_1605421609"
+// 	err = core.ExecImage(
+// 		ctx,
+// 		dockerClient,
+// 		[]string{"amber"},
+// 		"zengxinzhy/amber-runtime-cuda11.4.2:1.2",
+// 		dir,
+// 		dir,
+// 		"/data",
+// 		"all",
+// 		"container_name_test",
+// 		&containerId,
+// 		func(progress float64) {
+// 			log.Printf("progress: %f\n", progress)
+// 		},
+// 	)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }
+
+// func TestSminaImage(t *testing.T) {
+// 	ctx := context.Background()
+// 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	var containerId string
+// 	var dir = "/tmp/sath/smina"
+// 	err = core.ExecImage(
+// 		ctx,
+// 		dockerClient,
+// 		[]string{"bash", "-c", "cd /data && /main --config config.txt"},
+// 		"zengxinzhy/smina:1.0",
+// 		dir,
+// 		dir,
+// 		"/data",
+// 		"",
+// 		"container_name_test",
+// 		&containerId,
+// 		func(progress float64) {
+// 			log.Printf("progress: %f\n", progress)
+// 		},
+// 	)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// }

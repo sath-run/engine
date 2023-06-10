@@ -11,6 +11,12 @@ import (
 	"github.com/sath-run/engine/pkg/api"
 )
 
+var dataPath string
+
+func init() {
+	flag.StringVar(&dataPath, "data", "", "path of data folder")
+}
+
 func main() {
 	flag.Parse()
 	grpcAddr := "scheduler.sath.run:50051"

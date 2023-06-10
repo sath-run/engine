@@ -4,15 +4,14 @@ option go_package = "github.com/sath-run/engine/pkg/protobuf";
 
 package protobuf;
 
-import "job.proto";
+import "task.proto";
 
 service engine {
   rpc HandShake(HandShakeRequest) returns (HandShakeResponse);
   rpc Login(LoginRequest) returns (LoginResponse);
   rpc HeartBeats(HeartBeatsRequest) returns (HeartBeatsResponse);
-  rpc GetNewJob(JobGetRequest) returns (JobGetResponse);
-  rpc PopulateJobResult(JobPopulateRequest) returns (JobPopulateResponse);
-  rpc RequestFileUpload(FileUploadRequest) returns (FileUploadResponse);
+  rpc GetNewTask(TaskGetRequest) returns (TaskGetResponse);
+  rpc NotifyTaskStatus(TaskNotificationRequest) returns (TaskNotificationResponse);
 }
 
 message HandShakeRequest {
@@ -21,7 +20,8 @@ message HandShakeRequest {
 
 message HandShakeResponse {
   string token = 1;
-  bool isUser = 2;
+  string user_id = 2;
+  string device_id = 3;
 }
 
 message LoginRequest {
@@ -31,25 +31,14 @@ message LoginRequest {
 
 message LoginResponse {
   string token = 1;
-}
-
-enum EnumJobStatus {
-  EJS_UNSPECIFIED = 0;
-	EJS_READY = 10;
-	EJS_PULLING_IMAGE = 20;
-  EJS_PROCESSING_INPUTS = 25;
-	EJS_RUNNING = 30;
-  EJS_PROCESSING_OUPUTS = 35;
-	EJS_POPULATING = 40;
-	EJS_SUCCESS = 50;
-	EJS_CANCELLED = 60;
-	EJS_ERROR = 70;
+  string user_id = 2;
+  string device_id = 3;
 }
 
 message HeartBeatsRequest {
   message ExecInfo {
     string exec_id = 1;
-    EnumJobStatus status = 2;
+    EnumTaskStatus status = 2;
     float progress = 3;
     string message = 4;
   }

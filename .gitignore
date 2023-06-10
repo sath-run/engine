@@ -17,3 +17,5 @@
 
 # protobuf
 *.pb.go
+
+.sath.token

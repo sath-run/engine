@@ -18,11 +18,10 @@ func Login(email string, password string) error {
 	if err != nil {
 		return err
 	}
-	if err := saveToken(res.Token, true); err != nil {
+	if err := saveToken(res.Token); err != nil {
 		return err
 	}
 	g.token = res.Token
-	g.isUser = true
 	return nil
 }
 
@@ -31,8 +30,8 @@ func Logout() error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".user.token")); !os.IsNotExist(err) {
-		if err := os.Remove(filepath.Join(dir, ".user.token")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, ".sath.token")); !os.IsNotExist(err) {
+		if err := os.Remove(filepath.Join(dir, ".sath.token")); err != nil {
 			return err
 		}
 	}
@@ -45,6 +44,6 @@ func Logout() error {
 	return nil
 }
 
-func Token() (string, bool) {
-	return g.token, g.isUser
+func Token() string {
+	return g.token
 }
