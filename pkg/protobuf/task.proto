@@ -32,6 +32,7 @@ message TaskGetResponse {
   File output = 7;
   string gpu_opts = 8;
   Volume volume = 9;
+  bool redirected_upload = 10;
 }
 
 message Volume {

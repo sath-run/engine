@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
@@ -120,28 +119,56 @@ func processOutputs(dir string, task *pb.TaskGetResponse) error {
 	default:
 		method = "GET"
 	}
-	obj := map[string]any{
-		"taskId": task.TaskId,
-		"execId": task.ExecId,
+
+	url := task.Output.Url
+	headers := task.Output.Headers
+	data := task.Output.Data
+
+	if headers["Accept"] == "application/json" {
+		body, err := json.Marshal(data)
+		if err != nil {
+			return err
+		}
+		req, err := retryablehttp.NewRequest(method, url, body)
+		if err != nil {
+			return err
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := retryablehttp.NewClient().Do(req)
+		if err != nil {
+			return err
+		}
+		body, err = io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		res.Body.Close()
+		var obj struct {
+			Url     string            `json:"url"`
+			Method  string            `json:"method"`
+			Headers map[string]string `json:"headers"`
+		}
+		if err := json.Unmarshal(body, &obj); err != nil {
+			return err
+		}
+		url = obj.Url
+		headers = obj.Headers
+		method = obj.Method
 	}
-	for k, v := range output.Data {
-		obj[k] = v
-	}
-	data, err := json.Marshal(obj)
+
+	req, err := retryablehttp.NewRequest(method, url, &buf)
 	if err != nil {
 		return err
 	}
-	req, err := retryablehttp.NewRequest(method, output.Url, data)
-	if err != nil {
-		return err
-	}
-	for k, v := range output.Headers {
+	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
 	if _, err := retryablehttp.NewClient().Do(req); err != nil {
 		return errors.WithStack(err)
 	}
-
 	return nil
 }
 
@@ -157,8 +184,6 @@ func RunSingleJob(ctx context.Context) error {
 	if task == nil || len(task.ExecId) == 0 {
 		return ErrNoJob
 	}
-
-	spew.Dump(task)
 
 	status := TaskStatus{
 		Id:        task.ExecId,
