@@ -30,8 +30,8 @@ func Logout() error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".sath.token")); !os.IsNotExist(err) {
-		if err := os.Remove(filepath.Join(dir, ".sath.token")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, ".user.token")); !os.IsNotExist(err) {
+		if err := os.Remove(filepath.Join(dir, ".user.token")); err != nil {
 			return err
 		}
 	}

@@ -83,7 +83,7 @@ import (
 // 	// if err := core.ExecImage(
 // 	// 	context.Background(), core.GetDockerClient(), job.Cmds, "zengxinzhy/amber-runtime-cuda11.4.2:1.2", "/tmp/sath/sath_tmp_1040899213", "/tmp/sath/sath_tmp_1040899213", job.VolumePath,
 // 	// 	job.GpuOpts, &containerId, func(progress float64) {
-// 	// 		// 	status.Status = pb.EnumTaskStatus_EJS_RUNNING
+// 	// 		// 	status.Status = pb.EnumExecStatus_RUNNING
 // 	// 		// 	status.Progress = progress
 // 	// 		// 	populateTaskStatus(status)
 // 	// 	}); err != nil {

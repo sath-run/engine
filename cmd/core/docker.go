@@ -167,12 +167,12 @@ func ExecImage(
 	defer func() {
 		// assign a new background to ctx to make sure the following code still works
 		// in case the original ctx was cancelled
-		ctx = context.Background()
-		if err := client.ContainerStop(ctx, containerId, nil); err != nil {
+		c := context.Background()
+		if err := client.ContainerStop(c, containerId, nil); err != nil {
 			utils.LogError(errors.WithStack(err))
 			return
 		}
-		if err := client.ContainerRemove(ctx, containerId, types.ContainerRemoveOptions{
+		if err := client.ContainerRemove(c, containerId, types.ContainerRemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
 		}); err != nil {
@@ -191,7 +191,7 @@ func ExecImage(
 		Details:    true,
 	})
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 	defer out.Close()
 
@@ -199,7 +199,7 @@ func ExecImage(
 	for scanner.Scan() {
 		onProgress(scanner.Text())
 	}
-	return nil
+	return ctx.Err()
 }
 
 func StopCurrentRunningContainers(client *client.Client) error {

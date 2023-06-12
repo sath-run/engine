@@ -16,31 +16,34 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
+	"google.golang.org/grpc/metadata"
 )
 
 var (
 	ErrNoJob = errors.New("No job")
 )
 
-func TaskStatusText(enum pb.EnumTaskStatus) string {
+func TaskStatusText(enum pb.EnumExecStatus) string {
 	switch enum {
-	case pb.EnumTaskStatus_EJS_READY:
+	case pb.EnumExecStatus_READY:
 		return "ready"
-	case pb.EnumTaskStatus_EJS_PULLING_IMAGE:
+	case pb.EnumExecStatus_PULLING_IMAGE:
 		return "pulling-image"
-	case pb.EnumTaskStatus_EJS_PROCESSING_INPUTS:
+	case pb.EnumExecStatus_DOWNLOADING_INPUTS:
+		return "downloading"
+	case pb.EnumExecStatus_PROCESSING_INPUTS:
 		return "preprocessing"
-	case pb.EnumTaskStatus_EJS_RUNNING:
+	case pb.EnumExecStatus_RUNNING:
 		return "running"
-	case pb.EnumTaskStatus_EJS_PROCESSING_OUPUTS:
+	case pb.EnumExecStatus_PROCESSING_OUPUTS:
+		return "postprocessing"
+	case pb.EnumExecStatus_UPLOADING_OUTPUTS:
 		return "uploading"
-	case pb.EnumTaskStatus_EJS_POPULATING:
-		return "populating"
-	case pb.EnumTaskStatus_EJS_SUCCESS:
+	case pb.EnumExecStatus_SUCCESS:
 		return "success"
-	case pb.EnumTaskStatus_EJS_CANCELLED:
+	case pb.EnumExecStatus_CANCELLED:
 		return "cancelled"
-	case pb.EnumTaskStatus_EJS_ERROR:
+	case pb.EnumExecStatus_ERROR:
 		return "error"
 	default:
 		return "unspecified"
@@ -57,11 +60,13 @@ type TaskStatus struct {
 	Id          string
 	ImageUrl    string
 	ContainerId string
-	Status      pb.EnumTaskStatus
+	Status      pb.EnumExecStatus
 	Progress    float64
 	Message     string
 	CreatedAt   time.Time
 	CompletedAt time.Time
+	UpdatedAt   time.Time
+	stream      pb.Engine_NotifyExecStatusClient
 }
 
 func processInputs(dir string, task *pb.TaskGetResponse) error {
@@ -184,49 +189,42 @@ func RunSingleJob(ctx context.Context) error {
 	if task == nil || len(task.ExecId) == 0 {
 		return ErrNoJob
 	}
-
+	c := g.ContextWithToken(context.TODO())
+	metadata.AppendToOutgoingContext(c,
+		"execId", task.ExecId)
+	stream, err := g.grpcClient.NotifyExecStatus(c)
+	if err != nil {
+		return err
+	}
 	status := TaskStatus{
 		Id:        task.ExecId,
 		CreatedAt: time.Now(),
 		Progress:  0,
+		stream:    stream,
 	}
 	err = RunTask(ctx, task, &status)
 	status.CompletedAt = time.Now()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			status.Status = pb.EnumTaskStatus_EJS_CANCELLED
+			status.Status = pb.EnumExecStatus_CANCELLED
 			status.Message = "user cancelled"
 		} else {
-			status.Status = pb.EnumTaskStatus_EJS_ERROR
-			status.Message = err.Error()
-			log.Printf("%+v\n", err)
+			status.Status = pb.EnumExecStatus_ERROR
+			status.Message = fmt.Sprintf("%+v", err)
 		}
 	} else {
 		status.Progress = 100
-		status.Status = pb.EnumTaskStatus_EJS_POPULATING
+		status.Status = pb.EnumExecStatus_SUCCESS
 	}
 
 	populateTaskStatus(&status)
-
-	if _, err := g.grpcClient.NotifyTaskStatus(ctx, &pb.TaskNotificationRequest{
-		TaskId:  task.TaskId,
-		ExecId:  task.ExecId,
-		Status:  status.Status,
-		Message: status.Message,
-	}); err != nil {
-		status.Status = pb.EnumTaskStatus_EJS_ERROR
-		status.Message = err.Error()
-	} else if status.Status == pb.EnumTaskStatus_EJS_POPULATING {
-		status.Status = pb.EnumTaskStatus_EJS_SUCCESS
-	}
-	populateTaskStatus(&status)
-
+	_, err = stream.CloseAndRecv()
 	return err
 }
 
 func RunTask(ctx context.Context, task *pb.TaskGetResponse, status *TaskStatus) error {
 	status.ImageUrl = task.ImageUrl
-	status.Status = pb.EnumTaskStatus_EJS_READY
+	status.Status = pb.EnumExecStatus_READY
 	populateTaskStatus(status)
 
 	dir, err := os.MkdirTemp(g.localDataDir, "sath_tmp_*")
@@ -257,21 +255,21 @@ func RunTask(ctx context.Context, task *pb.TaskGetResponse, status *TaskStatus) 
 	}
 
 	if err = PullImage(ctx, g.dockerClient, task.ImageUrl, func(text string) {
-		status.Status = pb.EnumTaskStatus_EJS_PULLING_IMAGE
+		status.Status = pb.EnumExecStatus_PULLING_IMAGE
 		status.Message = text
 		populateTaskStatus(status)
 	}); err != nil {
 		return err
 	}
 
-	status.Status = pb.EnumTaskStatus_EJS_PROCESSING_INPUTS
+	status.Status = pb.EnumExecStatus_PROCESSING_INPUTS
 	populateTaskStatus(status)
 
 	if err = processInputs(localDataDir, task); err != nil {
 		return err
 	}
 
-	status.Status = pb.EnumTaskStatus_EJS_RUNNING
+	status.Status = pb.EnumExecStatus_RUNNING
 	populateTaskStatus(status)
 
 	binds := []string{
@@ -289,39 +287,34 @@ func RunTask(ctx context.Context, task *pb.TaskGetResponse, status *TaskStatus) 
 	if err != nil {
 		return err
 	}
-
 	if err := ExecImage(ctx, g.dockerClient, containerId, func(line string) {
-		if _, err = g.grpcClient.NotifyTaskStatus(context.TODO(), &pb.TaskNotificationRequest{
-			ExecId:  task.ExecId,
-			TaskId:  task.TaskId,
-			Status:  pb.EnumTaskStatus_EJS_RUNNING,
-			Message: line,
-		}); err != nil {
-			utils.LogError(err)
-		}
+		status.Status = pb.EnumExecStatus_RUNNING
+		status.Message = line
+		populateTaskStatus(status)
 	}); err != nil {
 		return err
 	}
-
-	status.Status = pb.EnumTaskStatus_EJS_PROCESSING_OUPUTS
+	status.Status = pb.EnumExecStatus_PROCESSING_OUPUTS
 	populateTaskStatus(status)
 
 	if err := processOutputs(dir, task); err != nil {
 		return err
 	}
 
-	if _, err = g.grpcClient.NotifyTaskStatus(ctx, &pb.TaskNotificationRequest{
-		TaskId: task.TaskId,
-		ExecId: task.ExecId,
-		Status: pb.EnumTaskStatus_EJS_SUCCESS,
-	}); err != nil {
-		return err
-	}
-
 	return nil
 }
 
-func populateTaskStatus(status *TaskStatus) {
+func populateTaskStatus(status *TaskStatus) error {
+	status.UpdatedAt = time.Now()
+	if err := status.stream.Send(&pb.ExecNotificationRequest{
+		Status:   status.Status,
+		Message:  status.Message,
+		Progress: int32(status.Progress),
+	}); err != nil {
+		utils.LogDebug("populateTaskStatus", err)
+		return err
+	}
+
 	taskContext.mu.Lock()
 	defer taskContext.mu.Unlock()
 	taskContext.status = status
@@ -330,6 +323,7 @@ func populateTaskStatus(status *TaskStatus) {
 		c <- *status
 	}
 	status.Message = ""
+	return nil
 }
 
 func SubscribeTaskStatus(channel chan TaskStatus) {

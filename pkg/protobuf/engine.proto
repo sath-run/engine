@@ -11,7 +11,7 @@ service engine {
   rpc Login(LoginRequest) returns (LoginResponse);
   rpc HeartBeats(HeartBeatsRequest) returns (HeartBeatsResponse);
   rpc GetNewTask(TaskGetRequest) returns (TaskGetResponse);
-  rpc NotifyTaskStatus(TaskNotificationRequest) returns (TaskNotificationResponse);
+  rpc NotifyExecStatus(stream ExecNotificationRequest) returns (ExecNotificationResponse);
 }
 
 message HandShakeRequest {
@@ -38,7 +38,7 @@ message LoginResponse {
 message HeartBeatsRequest {
   message ExecInfo {
     string exec_id = 1;
-    EnumTaskStatus status = 2;
+    EnumExecStatus status = 2;
     float progress = 3;
     string message = 4;
   }

@@ -2,17 +2,18 @@ syntax = "proto3";
 package protobuf;
 option go_package = "github.com/sath-run/engine/pkg/protobuf";
 
-enum EnumTaskStatus {
-  EJS_UNSPECIFIED = 0;
-	EJS_READY = 10;
-	EJS_PULLING_IMAGE = 20;
-  EJS_PROCESSING_INPUTS = 25;
-	EJS_RUNNING = 30;
-  EJS_PROCESSING_OUPUTS = 35;
-	EJS_POPULATING = 40;
-	EJS_SUCCESS = 50;
-	EJS_CANCELLED = 60;
-	EJS_ERROR = 70;
+enum EnumExecStatus {
+  UNSPECIFIED = 0;
+	READY = 10;
+	PULLING_IMAGE = 20;
+  DOWNLOADING_INPUTS = 30;
+  PROCESSING_INPUTS = 40; 
+  RUNNING = 50;
+  PROCESSING_OUPUTS = 60;
+  UPLOADING_OUTPUTS = 70;
+	SUCCESS = 80;
+	CANCELLED = 90;
+	ERROR = 100;
 }
 
 message TaskGetRequest {
@@ -64,13 +65,12 @@ enum EnumFileOperation {
   EFO_ZIP = 4;
 }
 
-message TaskNotificationRequest {
-  string task_id = 1;
-  string exec_id = 2;
-  EnumTaskStatus status = 3;
-  string message = 4;
+message ExecNotificationRequest {
+  EnumExecStatus status = 1;
+  string message = 2;
+  int32 progress = 3;
 }
 
-message TaskNotificationResponse {
+message ExecNotificationResponse {
 
 }
