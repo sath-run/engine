@@ -41,7 +41,7 @@ func TaskStatusText(enum pb.EnumExecStatus) string {
 		return "uploading"
 	case pb.EnumExecStatus_SUCCESS:
 		return "success"
-	case pb.EnumExecStatus_CANCELLED:
+	case pb.EnumExecStatus_CANCELED:
 		return "cancelled"
 	case pb.EnumExecStatus_ERROR:
 		return "error"
@@ -190,8 +190,8 @@ func RunSingleJob(ctx context.Context) error {
 		return ErrNoJob
 	}
 	c := g.ContextWithToken(context.TODO())
-	metadata.AppendToOutgoingContext(c,
-		"execId", task.ExecId)
+	c = metadata.AppendToOutgoingContext(c,
+		"exec_id", task.ExecId)
 	stream, err := g.grpcClient.NotifyExecStatus(c)
 	if err != nil {
 		return err
@@ -206,7 +206,7 @@ func RunSingleJob(ctx context.Context) error {
 	status.CompletedAt = time.Now()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			status.Status = pb.EnumExecStatus_CANCELLED
+			status.Status = pb.EnumExecStatus_CANCELED
 			status.Message = "user cancelled"
 		} else {
 			status.Status = pb.EnumExecStatus_ERROR
