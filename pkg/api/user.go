@@ -11,29 +11,37 @@ import (
 
 func Login(c *gin.Context) {
 	var form struct {
-		Email    string `binding:"required" form:"email" json:"email"`
-		Password string `binding:"required" form:"password" json:"password"`
+		Username     string `binding:"required"`
+		Password     string `binding:"required"`
+		Organization string ``
 	}
 	if err := c.Bind(&form); fatal(c, err) {
 		return
 	}
-	if err := core.Login(form.Email, form.Password); err != nil {
-		if st, ok := status.FromError(err); ok && st.Code() == codes.InvalidArgument {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"message": st.Message(),
-			})
-		} else {
-			fatal(c, err)
+	if err := core.Login(form.Username, form.Password, form.Organization); err != nil {
+		if st, ok := status.FromError(err); ok {
+			if st.Code() == codes.InvalidArgument {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"message": st.Message(),
+				})
+			} else if st.Code() == codes.Unauthenticated {
+				c.JSON(http.StatusUnauthorized, gin.H{
+					"message": "Your username and password are not recognized",
+				})
+			}
+			return
 		}
+		fatal(c, err)
 		return
 	}
 	c.Status(http.StatusOK)
 }
 
-func GetToken(c *gin.Context) {
-	token := core.Token()
+func GetCredential(c *gin.Context) {
+	credential := core.Credential()
 	c.JSON(http.StatusOK, gin.H{
-		"token": token,
+		"username":     credential.Username,
+		"organization": credential.Organization,
 	})
 }
 

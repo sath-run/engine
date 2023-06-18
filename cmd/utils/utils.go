@@ -61,12 +61,14 @@ func GetExecutableDir() (string, error) {
 }
 
 func LogError(err error) {
-	msg := fmt.Sprintf(
-		"[SATH Err] %v |%+v\n",
-		time.Now().Format("2006/01/02 - 15:04:05"),
-		err)
-	log.Print(msg)
-	errLogger.Write([]byte(msg))
+	if os.Getenv("SATH_MODE") == "debug" {
+		msg := fmt.Sprintf(
+			"[SATH Err] %v |%+v\n",
+			time.Now().Format("2006/01/02 - 15:04:05"),
+			err)
+		log.Print(msg)
+		errLogger.Write([]byte(msg))
+	}
 }
 
 func LogDebug(a ...any) {

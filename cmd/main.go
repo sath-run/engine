@@ -32,6 +32,7 @@ func main() {
 	err := core.Init(&core.Config{
 		GrpcAddress: grpcAddr,
 		SSL:         ssl,
+		HostDir:     dataPath,
 	})
 	if err != nil {
 		log.Fatal(err)

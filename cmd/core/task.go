@@ -25,8 +25,8 @@ var (
 
 func TaskStatusText(enum pb.EnumExecStatus) string {
 	switch enum {
-	case pb.EnumExecStatus_READY:
-		return "ready"
+	case pb.EnumExecStatus_STARTED:
+		return "started"
 	case pb.EnumExecStatus_PULLING_IMAGE:
 		return "pulling-image"
 	case pb.EnumExecStatus_DOWNLOADING_INPUTS:
@@ -45,6 +45,8 @@ func TaskStatusText(enum pb.EnumExecStatus) string {
 		return "cancelled"
 	case pb.EnumExecStatus_ERROR:
 		return "error"
+	case pb.EnumExecStatus_PAUSED:
+		return "paused"
 	default:
 		return "unspecified"
 	}
@@ -69,10 +71,13 @@ type TaskStatus struct {
 	stream      pb.Engine_NotifyExecStatusClient
 }
 
-func processInputs(dir string, task *pb.TaskGetResponse) error {
+func processInputs(dir string, task *pb.TaskGetResponse, status *TaskStatus) error {
 	files := task.GetInputs()
 	dataDir := filepath.Join(dir, "/data")
+	status.Status = pb.EnumExecStatus_DOWNLOADING_INPUTS
 	for _, file := range files {
+		status.Message = fmt.Sprintf("start download %s", file.Name)
+		populateTaskStatus(status)
 		filePath := filepath.Join(dataDir, file.Name)
 		err := func() error {
 			out, err := os.Create(filePath)
@@ -177,9 +182,10 @@ func processOutputs(dir string, task *pb.TaskGetResponse) error {
 	return nil
 }
 
-func RunSingleJob(ctx context.Context) error {
+func RunSingleJob(ctx context.Context, orgId string) error {
 	task, err := g.grpcClient.GetNewTask(ctx, &pb.TaskGetRequest{
-		Version: VERSION,
+		Version:        VERSION,
+		OrganizationId: orgId,
 	})
 
 	if err != nil {
@@ -205,9 +211,10 @@ func RunSingleJob(ctx context.Context) error {
 	err = RunTask(ctx, task, &status)
 	status.CompletedAt = time.Now()
 	if err != nil {
+		utils.LogError(err)
 		if errors.Is(err, context.Canceled) {
 			status.Status = pb.EnumExecStatus_CANCELED
-			status.Message = "user cancelled"
+			status.Message = "user canceled"
 		} else {
 			status.Status = pb.EnumExecStatus_ERROR
 			status.Message = fmt.Sprintf("%+v", err)
@@ -224,8 +231,10 @@ func RunSingleJob(ctx context.Context) error {
 
 func RunTask(ctx context.Context, task *pb.TaskGetResponse, status *TaskStatus) error {
 	status.ImageUrl = task.ImageUrl
-	status.Status = pb.EnumExecStatus_READY
+	status.Status = pb.EnumExecStatus_STARTED
 	populateTaskStatus(status)
+
+	utils.LogDebug("RunTask: ", task)
 
 	dir, err := os.MkdirTemp(g.localDataDir, "sath_tmp_*")
 	if err != nil {
@@ -263,9 +272,7 @@ func RunTask(ctx context.Context, task *pb.TaskGetResponse, status *TaskStatus) 
 	}
 
 	status.Status = pb.EnumExecStatus_PROCESSING_INPUTS
-	populateTaskStatus(status)
-
-	if err = processInputs(localDataDir, task); err != nil {
+	if err = processInputs(localDataDir, task, status); err != nil {
 		return err
 	}
 
@@ -309,7 +316,7 @@ func populateTaskStatus(status *TaskStatus) error {
 	if err := status.stream.Send(&pb.ExecNotificationRequest{
 		Status:   status.Status,
 		Message:  status.Message,
-		Progress: int32(status.Progress),
+		Progress: float32(status.Progress),
 	}); err != nil {
 		utils.LogDebug("populateTaskStatus", err)
 		return err

@@ -53,7 +53,7 @@ type Global struct {
 	heartBeatDone chan bool
 	dumpDone      chan bool
 
-	token        string
+	credential   LoginCredential
 	grpcConn     *grpc.ClientConn
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
@@ -74,11 +74,12 @@ type Config struct {
 	GrpcAddress string
 	SSL         bool
 	DataDir     string
+	HostDir     string
 }
 
 func (g *Global) ContextWithToken(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(ctx,
-		"authorization", g.token,
+		"authorization", g.credential.Token,
 		"version", VERSION)
 }
 
@@ -136,7 +137,9 @@ func Init(config *Config) error {
 		return errors.WithStack(err)
 	}
 
-	g.token = readToken()
+	if cred := readCredential(); cred != nil {
+		g.credential = *cred
+	}
 	sysInfo := ""
 
 	if sysInfo, err = getSystemInfo(); err != nil {
@@ -150,11 +153,13 @@ func Init(config *Config) error {
 	}
 	if len(resp.Token) == 0 {
 		return errors.New("handshake did not get token")
-	} else if g.token != resp.Token {
-		if err := saveToken(resp.Token); err != nil {
+	} else if g.credential.Token != resp.Token {
+		g.credential.DeviceId = resp.DeviceId
+		g.credential.Token = resp.Token
+		g.credential.UserId = resp.UserId
+		if err := saveCredential(g.credential); err != nil {
 			return err
 		}
-		g.token = resp.Token
 	}
 
 	if len(config.DataDir) > 0 {
@@ -167,23 +172,7 @@ func Init(config *Config) error {
 		g.localDataDir = filepath.Join(dir, "data")
 	}
 
-	if strings.ToLower(os.Getenv("SATH_MODE")) == "docker" {
-		containerId, err := GetCurrentContainerId()
-		if err != nil {
-			panic(err)
-		}
-		inspect, err := g.dockerClient.ContainerInspect(context.TODO(), containerId)
-		if err != nil {
-			panic(err)
-		}
-		for _, bind := range inspect.HostConfig.Binds {
-			parts := strings.Split(bind, ":")
-			if len(parts) == 2 && parts[1] == g.localDataDir {
-				g.hostDataDir = parts[0]
-				break
-			}
-		}
-	}
+	g.hostDataDir = config.HostDir
 
 	if err := StopCurrentRunningContainers(g.dockerClient); err != nil {
 		panic(err)
@@ -195,26 +184,6 @@ func Init(config *Config) error {
 	g.status = STATUS_WAITING
 	utils.LogDebug("core initialized")
 	return nil
-}
-
-func readToken() string {
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return ""
-	}
-	bytes, err := os.ReadFile(filepath.Join(dir, ".sath.token"))
-	if err != nil {
-		return ""
-	}
-	return string(bytes)
-}
-
-func saveToken(token string) error {
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, ".sath.token"), []byte(token), 0666)
 }
 
 func setupHeartBeat() {
@@ -302,7 +271,7 @@ func run() {
 					log.Printf("%+v\n", err)
 				}
 			default:
-				err := RunSingleJob(g.ContextWithToken(ctx))
+				err := RunSingleJob(g.ContextWithToken(ctx), g.credential.OrganizationId)
 				if errors.Is(err, ErrNoJob) {
 					log.Println("no job")
 					time.Sleep(time.Second * 60)

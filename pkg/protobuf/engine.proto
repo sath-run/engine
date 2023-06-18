@@ -27,12 +27,14 @@ message HandShakeResponse {
 message LoginRequest {
   string password = 1;
   string account = 2;
+  string organization = 3;
 }
 
 message LoginResponse {
   string token = 1;
   string user_id = 2;
   string device_id = 3;
+  string organization_id = 4;
 }
 
 message HeartBeatsRequest {

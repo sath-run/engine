@@ -4,7 +4,7 @@ option go_package = "github.com/sath-run/engine/pkg/protobuf";
 
 enum EnumExecStatus {
   UNSPECIFIED = 0;
-	READY = 10;
+	STARTED = 10;
 	PULLING_IMAGE = 20;
   DOWNLOADING_INPUTS = 30;
   PROCESSING_INPUTS = 40; 
@@ -14,6 +14,7 @@ enum EnumExecStatus {
 	SUCCESS = 80;
 	CANCELED = 90;
 	ERROR = 100;
+  PAUSED = 110;
 }
 
 message TaskGetRequest {
@@ -68,7 +69,7 @@ enum EnumFileOperation {
 message ExecNotificationRequest {
   EnumExecStatus status = 1;
   string message = 2;
-  int32 progress = 3;
+  float progress = 3;
 }
 
 message ExecNotificationResponse {

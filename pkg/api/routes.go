@@ -10,6 +10,8 @@ import (
 func fatal(c *gin.Context, err error) bool {
 	if err == nil {
 		return false
+	} else if c.Writer.Status() == http.StatusBadRequest {
+		return false
 	} else if c.IsAborted() {
 		utils.LogError(err)
 		return true
@@ -37,6 +39,6 @@ func Init(addr string) {
 	r.GET("/jobs", GetTaskStatus)
 	r.POST("/users/login", Login)
 	r.POST("/users/logout", Logout)
-	r.GET("/users/token", GetToken)
+	r.GET("/users/credential", GetCredential)
 	r.Run(addr)
 }
