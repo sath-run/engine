@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"sync"
@@ -134,7 +135,7 @@ func processOutputs(dir string, task *pb.TaskGetResponse) error {
 	headers := task.Output.Headers
 	data := task.Output.Data
 
-	if headers["Accept"] == "application/json" {
+	if headers["Content-Type"] == "application/json" {
 		body, err := json.Marshal(data)
 		if err != nil {
 			return err
@@ -146,7 +147,6 @@ func processOutputs(dir string, task *pb.TaskGetResponse) error {
 		for k, v := range headers {
 			req.Header.Set(k, v)
 		}
-		req.Header.Set("Content-Type", "application/json")
 		res, err := retryablehttp.NewClient().Do(req)
 		if err != nil {
 			return err
@@ -160,6 +160,7 @@ func processOutputs(dir string, task *pb.TaskGetResponse) error {
 			Url     string            `json:"url"`
 			Method  string            `json:"method"`
 			Headers map[string]string `json:"headers"`
+			Data    map[string]string `json:"data"`
 		}
 		if err := json.Unmarshal(body, &obj); err != nil {
 			return err
@@ -167,17 +168,74 @@ func processOutputs(dir string, task *pb.TaskGetResponse) error {
 		url = obj.Url
 		headers = obj.Headers
 		method = obj.Method
+		data = obj.Data
 	}
-
-	req, err := retryablehttp.NewRequest(method, url, &buf)
-	if err != nil {
+	if err := uploadOutput(url, method, headers, data, buf); err != nil {
 		return err
 	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	if _, err := retryablehttp.NewClient().Do(req); err != nil {
-		return errors.WithStack(err)
+	return nil
+}
+
+func uploadOutput(url, method string, headers, data map[string]string, buf bytes.Buffer) error {
+	if headers["Content-Type"] == "multipart/form-data" {
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		fieldname := data["SATH_OUTPUT_FILED_NAME"]
+		if len(fieldname) == 0 {
+			fieldname = "file"
+		}
+		filename := data["SATH_OUTPUT_FILED_NAME"]
+		if len(filename) == 0 {
+			filename = "output.tar.gz"
+		}
+		part, err := writer.CreateFormFile(fieldname, filename)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(part, &buf)
+		if err != nil {
+			return err
+		}
+
+		for key, val := range data {
+			_ = writer.WriteField(key, val)
+		}
+		if err := writer.Close(); err != nil {
+			return err
+		}
+		req, err := retryablehttp.NewRequest(method, url, body)
+		if err != nil {
+			return err
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		client := retryablehttp.NewClient()
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		} else if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+			data, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return fmt.Errorf("fail to upload data, stats: %d, data: %s", resp.StatusCode, string(data))
+		}
+	} else {
+		req, err := retryablehttp.NewRequest(method, url, &buf)
+		if err != nil {
+			return err
+		}
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		resp, err := retryablehttp.NewClient().Do(req)
+		if err != nil {
+			return err
+		} else if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+			data, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return fmt.Errorf("fail to upload data, stats: %d, data: %s", resp.StatusCode, string(data))
+		}
 	}
 	return nil
 }
