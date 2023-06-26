@@ -17,18 +17,18 @@ enum EnumExecStatus {
   PAUSED = 110;
 }
 
-message TaskGetRequest {
+message JobGetRequest {
   string version = 1;
-  string job_id = 2;
+  string project_id = 2;
   string organization_id = 3;
   string user_id = 4;
 }
 
-message TaskGetResponse {
-  string job_id = 1;
-  string task_id = 2;
+message JobGetResponse {
+  string project_id = 1;
+  string job_id = 2;
   string exec_id = 3;
-  string image_url = 4;
+  Image image = 4;
   repeated string cmd = 5;
   repeated File inputs = 6;
   File output = 7;
@@ -50,6 +50,11 @@ message File {
   map<string, string> headers = 4; 
   map<string, string> data = 5;
   EnumFileOperation preprocess = 6;
+}
+
+message Image {
+  string url = 1;
+  string auth = 2;
 }
 
 enum EnumFileRequestMethod {

@@ -14,7 +14,7 @@ import (
 	"github.com/sath-run/engine/cmd/utils"
 )
 
-type TaskStatus struct {
+type JobStatus struct {
 	Id          string  `json:"id"`
 	Message     string  `json:"message"`
 	Status      string  `json:"status"`
@@ -25,23 +25,23 @@ type TaskStatus struct {
 	Image       string  `json:"Image"`
 }
 
-func getTaskStatusFromCore(coreStatus *core.TaskStatus) *TaskStatus {
+func getJobStatusFromCore(coreStatus *core.JobStatus) *JobStatus {
 	if coreStatus == nil {
 		return nil
 	}
-	return &TaskStatus{
+	return &JobStatus{
 		Id:          coreStatus.Id,
 		Message:     coreStatus.Message,
-		Status:      core.TaskStatusText(coreStatus.Status),
+		Status:      core.JobStatusText(coreStatus.Status),
 		Progress:    coreStatus.Progress,
 		CreatedAt:   coreStatus.CreatedAt.Unix(),
 		CompletedAt: coreStatus.CompletedAt.Unix(),
 		ContainerId: coreStatus.ContainerId,
-		Image:       coreStatus.ImageUrl,
+		Image:       coreStatus.Image,
 	}
 }
 
-func readTaskStatusFromLog() ([]*TaskStatus, error) {
+func readJobStatusFromLog() ([]*JobStatus, error) {
 	dir, err := utils.GetExecutableDir()
 	if err != nil {
 		return nil, err
@@ -57,14 +57,14 @@ func readTaskStatusFromLog() ([]*TaskStatus, error) {
 
 	scanner := bufio.NewScanner(file)
 
-	retval := []*TaskStatus{}
+	retval := []*JobStatus{}
 	for scanner.Scan() {
 		line := scanner.Text()
-		var status core.TaskStatus
+		var status core.JobStatus
 		if err := json.Unmarshal([]byte(line), &status); err != nil {
 			return nil, err
 		}
-		retval = append(retval, getTaskStatusFromCore(&status))
+		retval = append(retval, getJobStatusFromCore(&status))
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -74,35 +74,35 @@ func readTaskStatusFromLog() ([]*TaskStatus, error) {
 	return retval, nil
 }
 
-func StreamTaskStatus(c *gin.Context) {
-	chanStream := make(chan core.TaskStatus)
-	core.SubscribeTaskStatus(chanStream)
+func StreamJobStatus(c *gin.Context) {
+	chanStream := make(chan core.JobStatus)
+	core.SubscribeJobStatus(chanStream)
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case status := <-chanStream:
 			c.SSEvent("job-status", gin.H{
-				"jobs": []*TaskStatus{getTaskStatusFromCore(&status)},
+				"jobs": []*JobStatus{getJobStatusFromCore(&status)},
 			})
 			return true
 		case <-c.Request.Context().Done():
 			// client disconnected
-			core.UnsubscribeTaskStatus(chanStream)
+			core.UnsubscribeJobStatus(chanStream)
 			return false
 		}
 	})
 }
 
-func GetTaskStatus(c *gin.Context) {
-	status := core.GetTaskStatus()
+func GetJobStatus(c *gin.Context) {
+	status := core.GetJobStatus()
 
-	jobs := []*TaskStatus{}
+	jobs := []*JobStatus{}
 
 	if status != nil {
-		jobs = append(jobs, getTaskStatusFromCore(status))
+		jobs = append(jobs, getJobStatusFromCore(status))
 	}
 
 	if c.Query("filter") == "all" {
-		completed, err := readTaskStatusFromLog()
+		completed, err := readJobStatusFromLog()
 		if fatal(c, err) {
 			return
 		}

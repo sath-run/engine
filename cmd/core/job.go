@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"mime/multipart"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/docker/distribution/reference"
+	"github.com/docker/docker/api/types"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
@@ -24,7 +25,7 @@ var (
 	ErrNoJob = errors.New("No job")
 )
 
-func TaskStatusText(enum pb.EnumExecStatus) string {
+func JobStatusText(enum pb.EnumExecStatus) string {
 	switch enum {
 	case pb.EnumExecStatus_STARTED:
 		return "started"
@@ -53,32 +54,40 @@ func TaskStatusText(enum pb.EnumExecStatus) string {
 	}
 }
 
-var taskContext = struct {
+var jobContext = struct {
 	mu                sync.RWMutex
-	status            *TaskStatus
-	statusSubscribers []chan TaskStatus
+	status            *JobStatus
+	statusSubscribers []chan JobStatus
+	pauseChannel      chan bool
+	stream            pb.Engine_NotifyExecStatusClient
 }{}
 
-type TaskStatus struct {
+type JobStatus struct {
 	Id          string
-	ImageUrl    string
+	Image       string
 	ContainerId string
 	Status      pb.EnumExecStatus
 	Progress    float64
 	Message     string
+	Paused      bool
 	CreatedAt   time.Time
 	CompletedAt time.Time
 	UpdatedAt   time.Time
-	stream      pb.Engine_NotifyExecStatusClient
 }
 
-func processInputs(dir string, task *pb.TaskGetResponse, status *TaskStatus) error {
-	files := task.GetInputs()
+func init() {
+	fmt.Println()
+	jobContext.pauseChannel = make(chan bool, 1)
+	jobContext.pauseChannel <- false
+}
+
+func processInputs(dir string, job *pb.JobGetResponse, status *JobStatus) error {
+	files := job.GetInputs()
 	dataDir := filepath.Join(dir, "/data")
 	status.Status = pb.EnumExecStatus_DOWNLOADING_INPUTS
 	for _, file := range files {
 		status.Message = fmt.Sprintf("start download %s", file.Name)
-		populateTaskStatus(status)
+		populateJobStatus(status)
 		filePath := filepath.Join(dataDir, file.Name)
 		err := func() error {
 			out, err := os.Create(filePath)
@@ -108,10 +117,10 @@ func processInputs(dir string, task *pb.TaskGetResponse, status *TaskStatus) err
 	return nil
 }
 
-func processOutputs(dir string, task *pb.TaskGetResponse) error {
-	output := task.GetOutput()
+func processOutputs(dir string, job *pb.JobGetResponse) error {
+	output := job.GetOutput()
 	if output == nil {
-		return errors.New("task output is nil")
+		return errors.New("job output is nil")
 	}
 	outputDir := filepath.Join(dir, "/output")
 
@@ -131,9 +140,9 @@ func processOutputs(dir string, task *pb.TaskGetResponse) error {
 		method = "GET"
 	}
 
-	url := task.Output.Url
-	headers := task.Output.Headers
-	data := task.Output.Data
+	url := job.Output.Url
+	headers := job.Output.Headers
+	data := job.Output.Data
 
 	if headers["Content-Type"] == "application/json" {
 		body, err := json.Marshal(data)
@@ -241,7 +250,7 @@ func uploadOutput(url, method string, headers, data map[string]string, buf bytes
 }
 
 func RunSingleJob(ctx context.Context, orgId string) error {
-	task, err := g.grpcClient.GetNewTask(ctx, &pb.TaskGetRequest{
+	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{
 		Version:        VERSION,
 		OrganizationId: orgId,
 	})
@@ -250,23 +259,24 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 		return err
 	}
 
-	if task == nil || len(task.ExecId) == 0 {
+	if job == nil || len(job.ExecId) == 0 {
 		return ErrNoJob
 	}
 	c := g.ContextWithToken(context.TODO())
-	c = metadata.AppendToOutgoingContext(c,
-		"exec_id", task.ExecId)
+	c = metadata.AppendToOutgoingContext(c, "exec_id", job.ExecId)
 	stream, err := g.grpcClient.NotifyExecStatus(c)
 	if err != nil {
 		return err
 	}
-	status := TaskStatus{
-		Id:        task.ExecId,
+	jobContext.mu.Lock()
+	jobContext.stream = stream
+	jobContext.mu.Unlock()
+	status := JobStatus{
+		Id:        job.ExecId,
 		CreatedAt: time.Now(),
 		Progress:  0,
-		stream:    stream,
 	}
-	err = RunTask(ctx, task, &status)
+	err = RunJob(ctx, job, &status)
 	status.CompletedAt = time.Now()
 	if err != nil {
 		utils.LogError(err)
@@ -282,17 +292,30 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 		status.Status = pb.EnumExecStatus_SUCCESS
 	}
 
-	populateTaskStatus(&status)
-	_, err = stream.CloseAndRecv()
+	err = populateJobStatus(&status)
+	if err != nil {
+		// if fail to populate job status to server, we still need to notify clients
+		status.Status = pb.EnumExecStatus_ERROR
+		status.Message = err.Error()
+		notifyJobStatusToClients(&status)
+	}
+	jobContext.mu.RLock()
+	_, err = jobContext.stream.CloseAndRecv()
+	jobContext.mu.RUnlock()
 	return err
 }
 
-func RunTask(ctx context.Context, task *pb.TaskGetResponse, status *TaskStatus) error {
-	status.ImageUrl = task.ImageUrl
-	status.Status = pb.EnumExecStatus_STARTED
-	populateTaskStatus(status)
+func RunJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) error {
+	if ref, err := reference.ParseNormalizedNamed(job.Image.Url); err == nil {
+		status.Image = ref.Name()
+	} else {
+		status.Image = job.Image.Url
+	}
 
-	utils.LogDebug("RunTask: ", task)
+	status.Status = pb.EnumExecStatus_STARTED
+	populateJobStatus(status)
+
+	utils.LogDebug("RunJob: ", job)
 
 	dir, err := os.MkdirTemp(g.localDataDir, "sath_tmp_*")
 	if err != nil {
@@ -300,7 +323,7 @@ func RunTask(ctx context.Context, task *pb.TaskGetResponse, status *TaskStatus) 
 	}
 	defer func() {
 		if err := os.RemoveAll(dir); err != nil {
-			log.Printf("%+v\n", err)
+			utils.LogError(err)
 		}
 	}()
 
@@ -321,105 +344,171 @@ func RunTask(ctx context.Context, task *pb.TaskGetResponse, status *TaskStatus) 
 		hostDir = filepath.Join(g.hostDataDir, tmpDirName)
 	}
 
-	if err = PullImage(ctx, g.dockerClient, task.ImageUrl, func(text string) {
+	if err = PullImage(ctx, g.dockerClient, job.Image.Url, types.ImagePullOptions{
+		RegistryAuth: job.Image.Auth,
+	}, func(text string) {
 		status.Status = pb.EnumExecStatus_PULLING_IMAGE
 		status.Message = text
-		populateTaskStatus(status)
+		populateJobStatus(status)
 	}); err != nil {
 		return err
 	}
 
 	status.Status = pb.EnumExecStatus_PROCESSING_INPUTS
-	if err = processInputs(localDataDir, task, status); err != nil {
+	if err = processInputs(localDataDir, job, status); err != nil {
 		return err
 	}
 
 	status.Status = pb.EnumExecStatus_RUNNING
-	populateTaskStatus(status)
+	populateJobStatus(status)
 
 	binds := []string{
-		fmt.Sprintf("%s:%s", filepath.Join(hostDir, "/data"), task.Volume.Data),
-		fmt.Sprintf("%s:%s", filepath.Join(hostDir, "/source"), task.Volume.Source),
-		fmt.Sprintf("%s:%s", filepath.Join(hostDir, "/output"), task.Volume.Output),
+		fmt.Sprintf("%s:%s", filepath.Join(hostDir, "/data"), job.Volume.Data),
+		fmt.Sprintf("%s:%s", filepath.Join(hostDir, "/source"), job.Volume.Source),
+		fmt.Sprintf("%s:%s", filepath.Join(hostDir, "/output"), job.Volume.Output),
 	}
 
-	containerName := fmt.Sprintf("sath-%s", task.ExecId)
+	containerName := fmt.Sprintf("sath-%s", job.ExecId)
 
 	// create container
 	containerId, err := CreateContainer(
-		ctx, g.dockerClient, task.Cmd, task.ImageUrl,
-		task.GpuOpts, containerName, binds)
+		ctx, g.dockerClient, job.Cmd, job.Image.Url,
+		job.GpuOpts, containerName, binds)
 	if err != nil {
 		return err
 	}
+	status.ContainerId = containerId
 	if err := ExecImage(ctx, g.dockerClient, containerId, func(line string) {
 		status.Status = pb.EnumExecStatus_RUNNING
 		status.Message = line
-		populateTaskStatus(status)
+		populateJobStatus(status)
 	}); err != nil {
 		return err
 	}
 	status.Status = pb.EnumExecStatus_PROCESSING_OUPUTS
-	populateTaskStatus(status)
+	populateJobStatus(status)
 
-	if err := processOutputs(dir, task); err != nil {
+	if err := processOutputs(dir, job); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func populateTaskStatus(status *TaskStatus) error {
+func populateJobStatus(status *JobStatus) error {
+	err := notifyJobStatusToServer(status, 0, 3)
+	notifyJobStatusToClients(status)
+	return errors.WithStack(err)
+}
+
+func notifyJobStatusToServer(status *JobStatus, retry int, maxRetry int) error {
 	status.UpdatedAt = time.Now()
-	if err := status.stream.Send(&pb.ExecNotificationRequest{
+	jobContext.mu.Lock()
+	if err := jobContext.stream.Send(&pb.ExecNotificationRequest{
 		Status:   status.Status,
 		Message:  status.Message,
 		Progress: float32(status.Progress),
-	}); err != nil {
-		utils.LogDebug("populateTaskStatus", err)
+	}); errors.Is(err, io.EOF) {
+		if retry >= maxRetry {
+			jobContext.mu.Unlock()
+			return errors.Wrap(err, "max retry exceeded")
+		}
+		// server may ternimate stream connection after a configured idle timeout
+		// in this case, reconnect and try it again
+		stream, err := g.grpcClient.NotifyExecStatus(jobContext.stream.Context())
+		if err != nil {
+			return err
+		}
+		jobContext.stream.CloseSend()
+		jobContext.stream = stream
+		jobContext.mu.Unlock()
+		return notifyJobStatusToServer(status, retry+1, maxRetry)
+	} else if err != nil {
+		err = errors.WithStack(err)
+		jobContext.mu.Unlock()
 		return err
 	}
-
-	taskContext.mu.Lock()
-	defer taskContext.mu.Unlock()
-	taskContext.status = status
-
-	for _, c := range taskContext.statusSubscribers {
-		c <- *status
-	}
-	status.Message = ""
+	jobContext.mu.Unlock()
 	return nil
 }
 
-func SubscribeTaskStatus(channel chan TaskStatus) {
-	taskContext.mu.Lock()
-	defer taskContext.mu.Unlock()
-
-	taskContext.statusSubscribers = append(taskContext.statusSubscribers, channel)
+func notifyJobStatusToClients(status *JobStatus) error {
+	<-jobContext.pauseChannel
+	jobContext.mu.Lock()
+	defer jobContext.mu.Unlock()
+	jobContext.status = status
+	for _, c := range jobContext.statusSubscribers {
+		c <- *status
+	}
+	status.Message = ""
+	if !jobContext.status.Paused {
+		select {
+		case jobContext.pauseChannel <- false:
+		default:
+		}
+	}
+	return nil
 }
 
-func UnsubscribeTaskStatus(channel chan TaskStatus) {
-	taskContext.mu.Lock()
-	defer taskContext.mu.Unlock()
+func SubscribeJobStatus(channel chan JobStatus) {
+	jobContext.mu.Lock()
+	defer jobContext.mu.Unlock()
 
-	subscribers := make([]chan TaskStatus, 0)
-	for _, c := range taskContext.statusSubscribers {
+	jobContext.statusSubscribers = append(jobContext.statusSubscribers, channel)
+}
+
+func UnsubscribeJobStatus(channel chan JobStatus) {
+	jobContext.mu.Lock()
+	defer jobContext.mu.Unlock()
+
+	subscribers := make([]chan JobStatus, 0)
+	for _, c := range jobContext.statusSubscribers {
 		if c != channel {
 			subscribers = append(subscribers, c)
 		}
 	}
-	taskContext.statusSubscribers = subscribers
+	jobContext.statusSubscribers = subscribers
 	close(channel)
 }
 
-func GetTaskStatus() *TaskStatus {
-	taskContext.mu.RLock()
-	defer taskContext.mu.RUnlock()
+func GetJobStatus() *JobStatus {
+	jobContext.mu.RLock()
+	defer jobContext.mu.RUnlock()
 
-	if taskContext.status == nil {
+	if jobContext.status == nil {
 		return nil
 	} else {
-		var status TaskStatus = *taskContext.status
+		var status JobStatus = *jobContext.status
 		return &status
 	}
+}
+
+func Pause() {
+	jobContext.mu.Lock()
+	if !jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_RUNNING && len(jobContext.status.ContainerId) > 0 {
+		if err := g.dockerClient.ContainerPause(context.TODO(), jobContext.status.ContainerId); err != nil {
+			utils.LogError(err)
+		}
+	}
+	select {
+	case <-jobContext.pauseChannel:
+	default:
+	}
+	jobContext.status.Paused = true
+	jobContext.mu.Unlock()
+}
+
+func Resume() {
+	jobContext.mu.Lock()
+	if jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_RUNNING && len(jobContext.status.ContainerId) > 0 {
+		if err := g.dockerClient.ContainerUnpause(context.TODO(), jobContext.status.ContainerId); err != nil {
+			utils.LogError(err)
+		}
+	}
+	select {
+	case jobContext.pauseChannel <- false:
+	default:
+	}
+	jobContext.status.Paused = false
+	jobContext.mu.Unlock()
 }

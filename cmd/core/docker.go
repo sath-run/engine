@@ -67,7 +67,7 @@ func (config *DockerImageConfig) Image() string {
 	return image
 }
 
-func PullImage(ctx context.Context, dockerClient *client.Client, url string, onProgress func(text string)) error {
+func PullImage(ctx context.Context, dockerClient *client.Client, url string, options types.ImagePullOptions, onProgress func(text string)) error {
 	// look for local images to see if any mathces given id
 	// images, err := dockerClient.ImageList(ctx, types.ImageListOptions{})
 	// if err != nil {
@@ -105,7 +105,7 @@ func PullImage(ctx context.Context, dockerClient *client.Client, url string, onP
 	// }
 
 	// pull image from remote
-	reader, err := dockerClient.ImagePull(context.Background(), url, types.ImagePullOptions{})
+	reader, err := dockerClient.ImagePull(context.Background(), url, options)
 	if err != nil {
 		return errors.WithStack(err)
 	}

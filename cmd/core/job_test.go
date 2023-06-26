@@ -85,11 +85,11 @@ import (
 // 	// 	job.GpuOpts, &containerId, func(progress float64) {
 // 	// 		// 	status.Status = pb.EnumExecStatus_RUNNING
 // 	// 		// 	status.Progress = progress
-// 	// 		// 	populateTaskStatus(status)
+// 	// 		// 	populateJobStatus(status)
 // 	// 	}); err != nil {
 // 	// 	panic(err)
 // 	// }
-// 	var status core.TaskStatus
+// 	var status core.JobStatus
 // 	files, err := core.RunJob(context.Background(), job, &status)
 // 	if err != nil {
 // 		panic(err)
@@ -162,9 +162,9 @@ func TestUpload(t *testing.T) {
 func TestRedirectedUpload(t *testing.T) {
 	url := "http://localhost:8080/outputs"
 	obj := map[string]any{
-		"sathJobId":  "aaa",
-		"sathTaskId": "bbb",
-		"sathExecId": "ccc",
+		"sathProjectId": "aaa",
+		"sathJobId":     "bbb",
+		"sathExecId":    "ccc",
 	}
 	data, err := json.Marshal(obj)
 	checkErr(err)

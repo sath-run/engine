@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,28 +11,31 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/cli/opts"
+	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
-	"github.com/gin-gonic/gin"
 	"github.com/sath-run/engine/cmd/core"
 	"github.com/sath-run/engine/cmd/utils"
 )
 
 func TestDockerPull(t *testing.T) {
-	err := core.Init(&core.Config{
-		GrpcAddress: "localhost:50051",
-	})
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	checkErr(err)
 
-	if err != nil {
-		log.Printf("%+v\n", err)
-		panic(err)
+	authConfig := types.AuthConfig{
+		Username: "username",
+		Password: "password",
 	}
-
+	encodedJSON, err := json.Marshal(authConfig)
+	checkErr(err)
+	authStr := base64.URLEncoding.EncodeToString(encodedJSON)
 	ctx := context.Background()
-	err = core.PullImage(ctx, nil, "zengxinzhy/vinadock", func(text string) {
-		var obj gin.H
+	err = core.PullImage(ctx, dockerClient, "zengxinzhy/vina", types.ImagePullOptions{
+		RegistryAuth: authStr,
+	}, func(text string) {
+		var obj map[string]any
 		if err := json.Unmarshal([]byte(text), &obj); err != nil {
 			panic(err)
 		}
@@ -173,6 +177,12 @@ func TestVinaImage(t *testing.T) {
 		fmt.Println(line)
 	})
 	checkErr(err)
+}
+
+func TestImageName(t *testing.T) {
+	ref, err := reference.ParseNormalizedNamed("10.101.12.128/ai/astronomy_algorithm_presto_algorithm:v1.0")
+	checkErr(err)
+	spew.Dump(reference.FamiliarName(ref))
 }
 
 // func TestMdImage(t *testing.T) {

@@ -196,7 +196,7 @@ func setupHeartBeat() {
 			case <-ticker.C:
 				ctx := g.ContextWithToken(context.Background())
 				info := pb.HeartBeatsRequest{}
-				status := GetTaskStatus()
+				status := GetJobStatus()
 				if status != nil {
 					info.ExecInfos = append(info.ExecInfos, &pb.HeartBeatsRequest_ExecInfo{
 						ExecId:   status.Id,
@@ -273,12 +273,13 @@ func run() {
 			default:
 				err := RunSingleJob(g.ContextWithToken(ctx), g.credential.OrganizationId)
 				if errors.Is(err, ErrNoJob) {
-					log.Println("no job")
+					utils.LogWarning("no job")
 					time.Sleep(time.Second * 60)
 				} else if errors.Is(err, context.Canceled) {
-					log.Println("job cancelled")
+					utils.LogWarning("job cancelled")
 				} else if err != nil {
-					log.Printf("%+v\n", err)
+					utils.LogWarning(err)
+					utils.LogError(err)
 					time.Sleep(time.Second * 60)
 				}
 			}
@@ -376,33 +377,33 @@ func dump() {
 		time.Now().Format("2006/01/02 - 15:04:05"),
 	)
 	fmt.Printf("SATH Engine status: %s\n", Status())
-	if taskContext.status == nil {
+	if jobContext.status == nil {
 		fmt.Println("No job is running right now")
 	} else {
 		fmt.Println("SATH Engine current jobs:")
-		printJobs([]*TaskStatus{taskContext.status})
+		printJobs([]*JobStatus{jobContext.status})
 	}
 
 }
 
-func printJobs(tasks []*TaskStatus) {
+func printJobs(jobs []*JobStatus) {
 	fmt.Printf("%-10s %-14s %-10s %-30s %-16s %-16s %-16s\n",
 		"JOB ID", "STATUS", "PROGRESS", "IMAGE", "CONTAINER ID", "CREATED", "COMPLETED")
-	for _, task := range tasks {
-		createdAt := task.CreatedAt
-		completedAt := task.CompletedAt
-		image := task.ImageUrl
+	for _, job := range jobs {
+		createdAt := job.CreatedAt
+		completedAt := job.CompletedAt
+		image := job.Image
 		created := fmtDuration(time.Since(createdAt)) + " ago"
 		completed := ""
 		if !completedAt.IsZero() {
 			completed = fmtDuration(time.Since(completedAt)) + " ago"
 		}
-		containerId := task.ContainerId
+		containerId := job.ContainerId
 		if len(containerId) > 12 {
 			containerId = containerId[:12]
 		}
 		fmt.Printf("%-10s %-14s %-10.2f %-30s %-16s %-16s %-16s\n",
-			task.Id, task.Status, task.Progress, image, containerId,
+			job.Id, job.Status, job.Progress, image, containerId,
 			created,
 			completed,
 		)
