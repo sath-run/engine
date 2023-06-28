@@ -12,9 +12,11 @@ import (
 )
 
 var dataPath string
+var debugGrpc string
 
 func init() {
 	flag.StringVar(&dataPath, "data", "", "path of data folder")
+	flag.StringVar(&debugGrpc, "debugGrpc", "localhost", "grpc address for debug mode")
 }
 
 func main() {
@@ -24,7 +26,7 @@ func main() {
 	host := "localhost:33566"
 	if strings.ToLower(os.Getenv("SATH_MODE")) == "debug" {
 		ssl = false
-		grpcAddr = "localhost:50051"
+		grpcAddr = debugGrpc + ":50051"
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
