@@ -19,6 +19,14 @@ import (
 	"github.com/sath-run/engine/cmd/utils"
 )
 
+type StdErr struct {
+	msg string
+}
+
+func (err StdErr) Error() string {
+	return err.msg
+}
+
 type DockerImageResponse struct {
 	Format  string                 `json:"format"`
 	Version string                 `json:"version"`
@@ -210,7 +218,7 @@ func ExecImage(
 				onProgress(stdout)
 			}
 			if stderr.Len() > 0 {
-				return errors.New(stderr.String())
+				return StdErr{msg: stderr.String()}
 			} else {
 				return nil
 			}
