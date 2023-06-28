@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -50,8 +51,7 @@ type Global struct {
 	status      int
 	serviceDone chan bool
 
-	heartBeatDone chan bool
-	dumpDone      chan bool
+	dumpDone chan bool
 
 	credential   LoginCredential
 	grpcConn     *grpc.ClientConn
@@ -64,10 +64,9 @@ type Global struct {
 }
 
 var g = Global{
-	serviceDone:   make(chan bool),
-	heartBeatDone: make(chan bool),
-	dumpDone:      make(chan bool),
-	cancelJob:     nil,
+	serviceDone: make(chan bool),
+	dumpDone:    make(chan bool),
+	cancelJob:   nil,
 }
 
 type Config struct {
@@ -187,26 +186,37 @@ func Init(config *Config) error {
 }
 
 func setupHeartBeat() {
+	ctx := g.ContextWithToken(context.Background())
+	ticker := time.NewTicker(30 * time.Second)
+	stream, err := g.grpcClient.RouteCommand(ctx)
+	if err != nil {
+		utils.LogError(err)
+	}
+	commandChan := make(chan *pb.CommandResponse)
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
 		for {
 			select {
-			case <-g.heartBeatDone:
-				return
 			case <-ticker.C:
-				ctx := g.ContextWithToken(context.Background())
-				info := pb.HeartBeatsRequest{}
-				status := GetJobStatus()
-				if status != nil {
-					info.ExecInfos = append(info.ExecInfos, &pb.HeartBeatsRequest_ExecInfo{
-						ExecId:   status.Id,
-						Status:   status.Status,
-						Progress: float32(status.Progress),
-						Message:  status.Message,
-					})
+				commandChan <- &pb.CommandResponse{}
+			case res := <-commandChan:
+				if err = stream.Send(res); errors.Is(err, io.EOF) {
+					// if stream is disconnected, reconnect
+					stream, err = g.grpcClient.RouteCommand(ctx)
 				}
-				_, _ = g.grpcClient.HeartBeats(ctx, &info)
+				if err != nil {
+					utils.LogError(err)
+				}
 			}
+		}
+	}()
+	go func() {
+		for {
+			in, err := stream.Recv()
+			if err != nil {
+				utils.LogError(err)
+				continue
+			}
+			fmt.Println(in)
 		}
 	}()
 }

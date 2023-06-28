@@ -9,9 +9,9 @@ import "job.proto";
 service engine {
   rpc HandShake(HandShakeRequest) returns (HandShakeResponse);
   rpc Login(LoginRequest) returns (LoginResponse);
-  rpc HeartBeats(HeartBeatsRequest) returns (HeartBeatsResponse);
   rpc GetNewJob(JobGetRequest) returns (JobGetResponse);
   rpc NotifyExecStatus(stream ExecNotificationRequest) returns (ExecNotificationResponse);
+  rpc RouteCommand(stream CommandResponse) returns (stream CommandRequest);
 }
 
 message HandShakeRequest {
@@ -37,17 +37,19 @@ message LoginResponse {
   string organization_id = 4;
 }
 
-message HeartBeatsRequest {
-  message ExecInfo {
-    string exec_id = 1;
-    EnumExecStatus status = 2;
-    float progress = 3;
-    string message = 4;
-  }
-  repeated ExecInfo exec_infos = 1;
-  string spare = 2;
+message CommandResponse {
+  string id = 1;
+  map<string, string> data = 2; 
 }
 
-message HeartBeatsResponse {
+enum EnumCommand {
+  EC_UNSPECIFIED = 0;
+  EC_PAUSE = 1;
+  EC_RESUME = 2;
+}
 
+message CommandRequest {
+  string id = 1;
+  EnumCommand command = 2;
+  map<string, string> data = 3; 
 }

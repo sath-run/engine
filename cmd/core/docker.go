@@ -224,7 +224,9 @@ func ExecImage(
 			return err
 		}
 		switch hdr[0] {
-		case 1:
+		case 2:
+			stderr.Write(data)
+		default:
 			content := string(data)
 			if parts := strings.Split(content, "\n"); len(parts) > 0 {
 				for i := 0; i < len(parts)-1; i++ {
@@ -238,8 +240,6 @@ func ExecImage(
 			} else {
 				stdout += content
 			}
-		default:
-			stderr.Write(data)
 		}
 	}
 }

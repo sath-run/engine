@@ -90,7 +90,7 @@ func LogWarning(a ...any) {
 		time.Now().Format("2006/01/02 - 15:04:05"),
 		" | ")
 	messages = append(messages, a...)
-	log.Println(messages...)
+	fmt.Println(messages...)
 }
 
 func LogJob(content []byte) {

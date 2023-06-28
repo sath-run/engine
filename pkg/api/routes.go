@@ -37,6 +37,8 @@ func Init(addr string) {
 	r.GET("/services/status", GetServiceStatus)
 	r.GET("/jobs/stream", StreamJobStatus)
 	r.GET("/jobs", GetJobStatus)
+	r.POST("/jobs/pause", PauseJob)
+	r.POST("/jobs/resume", ResumeJob)
 	r.POST("/users/login", Login)
 	r.POST("/users/logout", Logout)
 	r.GET("/users/credential", GetCredential)

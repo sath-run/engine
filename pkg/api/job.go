@@ -29,10 +29,14 @@ func getJobStatusFromCore(coreStatus *core.JobStatus) *JobStatus {
 	if coreStatus == nil {
 		return nil
 	}
+	status := core.JobStatusText(coreStatus.Status)
+	if coreStatus.Paused {
+		status = "paused"
+	}
 	return &JobStatus{
 		Id:          coreStatus.Id,
 		Message:     coreStatus.Message,
-		Status:      core.JobStatusText(coreStatus.Status),
+		Status:      status,
 		Progress:    coreStatus.Progress,
 		CreatedAt:   coreStatus.CreatedAt.Unix(),
 		CompletedAt: coreStatus.CompletedAt.Unix(),
@@ -75,8 +79,11 @@ func readJobStatusFromLog() ([]*JobStatus, error) {
 }
 
 func StreamJobStatus(c *gin.Context) {
-	chanStream := make(chan core.JobStatus)
+	chanStream := make(chan core.JobStatus, 16)
 	core.SubscribeJobStatus(chanStream)
+	if status := core.GetJobStatus(); status != nil {
+		chanStream <- *status
+	}
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case status := <-chanStream:
@@ -111,5 +118,19 @@ func GetJobStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"jobs": jobs,
+	})
+}
+
+func PauseJob(c *gin.Context) {
+	success := core.Pause()
+	c.JSON(http.StatusOK, gin.H{
+		"success": success,
+	})
+}
+
+func ResumeJob(c *gin.Context) {
+	success := core.Resume()
+	c.JSON(http.StatusOK, gin.H{
+		"success": success,
 	})
 }

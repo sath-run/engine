@@ -38,12 +38,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if strings.ToLower(os.Getenv("SATH_MODE")) == "docker" {
-		err := core.Start()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
+	// if strings.ToLower(os.Getenv("SATH_MODE")) == "docker" {
+	// 	err := core.Start()
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// }
 
 	api.Init(host)
 

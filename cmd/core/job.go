@@ -27,27 +27,27 @@ var (
 
 func JobStatusText(enum pb.EnumExecStatus) string {
 	switch enum {
-	case pb.EnumExecStatus_STARTED:
+	case pb.EnumExecStatus_EES_STARTED:
 		return "started"
-	case pb.EnumExecStatus_PULLING_IMAGE:
+	case pb.EnumExecStatus_EES_PULLING_IMAGE:
 		return "pulling-image"
-	case pb.EnumExecStatus_DOWNLOADING_INPUTS:
+	case pb.EnumExecStatus_EES_DOWNLOADING_INPUTS:
 		return "downloading"
-	case pb.EnumExecStatus_PROCESSING_INPUTS:
+	case pb.EnumExecStatus_EES_PROCESSING_INPUTS:
 		return "preprocessing"
-	case pb.EnumExecStatus_RUNNING:
+	case pb.EnumExecStatus_EES_RUNNING:
 		return "running"
-	case pb.EnumExecStatus_PROCESSING_OUPUTS:
+	case pb.EnumExecStatus_EES_PROCESSING_OUPUTS:
 		return "postprocessing"
-	case pb.EnumExecStatus_UPLOADING_OUTPUTS:
+	case pb.EnumExecStatus_EES_UPLOADING_OUTPUTS:
 		return "uploading"
-	case pb.EnumExecStatus_SUCCESS:
+	case pb.EnumExecStatus_EES_SUCCESS:
 		return "success"
-	case pb.EnumExecStatus_CANCELED:
+	case pb.EnumExecStatus_EES_CANCELED:
 		return "cancelled"
-	case pb.EnumExecStatus_ERROR:
+	case pb.EnumExecStatus_EES_ERROR:
 		return "error"
-	case pb.EnumExecStatus_PAUSED:
+	case pb.EnumExecStatus_EES_PAUSED:
 		return "paused"
 	default:
 		return "unspecified"
@@ -84,7 +84,7 @@ func init() {
 func processInputs(dir string, job *pb.JobGetResponse, status *JobStatus) error {
 	files := job.GetInputs()
 	dataDir := filepath.Join(dir, "/data")
-	status.Status = pb.EnumExecStatus_DOWNLOADING_INPUTS
+	status.Status = pb.EnumExecStatus_EES_DOWNLOADING_INPUTS
 	for _, file := range files {
 		status.Message = fmt.Sprintf("start download %s", file.Name)
 		populateJobStatus(status)
@@ -281,21 +281,21 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 	if err != nil {
 		utils.LogError(err)
 		if errors.Is(err, context.Canceled) {
-			status.Status = pb.EnumExecStatus_CANCELED
+			status.Status = pb.EnumExecStatus_EES_CANCELED
 			status.Message = "user canceled"
 		} else {
-			status.Status = pb.EnumExecStatus_ERROR
+			status.Status = pb.EnumExecStatus_EES_ERROR
 			status.Message = fmt.Sprintf("%+v", err)
 		}
 	} else {
 		status.Progress = 100
-		status.Status = pb.EnumExecStatus_SUCCESS
+		status.Status = pb.EnumExecStatus_EES_SUCCESS
 	}
 
 	err = populateJobStatus(&status)
 	if err != nil {
 		// if fail to populate job status to server, we still need to notify clients
-		status.Status = pb.EnumExecStatus_ERROR
+		status.Status = pb.EnumExecStatus_EES_ERROR
 		status.Message = err.Error()
 		notifyJobStatusToClients(&status)
 	}
@@ -312,7 +312,7 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) erro
 		status.Image = job.Image.Url
 	}
 
-	status.Status = pb.EnumExecStatus_STARTED
+	status.Status = pb.EnumExecStatus_EES_STARTED
 	populateJobStatus(status)
 
 	utils.LogDebug("RunJob: ", job)
@@ -347,19 +347,19 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) erro
 	if err = PullImage(ctx, g.dockerClient, job.Image.Url, types.ImagePullOptions{
 		RegistryAuth: job.Image.Auth,
 	}, func(text string) {
-		status.Status = pb.EnumExecStatus_PULLING_IMAGE
+		status.Status = pb.EnumExecStatus_EES_PULLING_IMAGE
 		status.Message = text
 		populateJobStatus(status)
 	}); err != nil {
 		return err
 	}
 
-	status.Status = pb.EnumExecStatus_PROCESSING_INPUTS
+	status.Status = pb.EnumExecStatus_EES_PROCESSING_INPUTS
 	if err = processInputs(localDataDir, job, status); err != nil {
 		return err
 	}
 
-	status.Status = pb.EnumExecStatus_RUNNING
+	status.Status = pb.EnumExecStatus_EES_RUNNING
 	populateJobStatus(status)
 
 	binds := []string{
@@ -379,13 +379,13 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) erro
 	}
 	status.ContainerId = containerId
 	if err := ExecImage(ctx, g.dockerClient, containerId, func(line string) {
-		status.Status = pb.EnumExecStatus_RUNNING
+		status.Status = pb.EnumExecStatus_EES_RUNNING
 		status.Message = line
 		populateJobStatus(status)
 	}); err != nil {
 		return err
 	}
-	status.Status = pb.EnumExecStatus_PROCESSING_OUPUTS
+	status.Status = pb.EnumExecStatus_EES_PROCESSING_OUPUTS
 	populateJobStatus(status)
 
 	if err := processOutputs(dir, job); err != nil {
@@ -404,8 +404,12 @@ func populateJobStatus(status *JobStatus) error {
 func notifyJobStatusToServer(status *JobStatus, retry int, maxRetry int) error {
 	status.UpdatedAt = time.Now()
 	jobContext.mu.Lock()
+	st := status.Status
+	if status.Paused && !jobContext.status.Paused {
+		st = pb.EnumExecStatus_EES_PAUSED
+	}
 	if err := jobContext.stream.Send(&pb.ExecNotificationRequest{
-		Status:   status.Status,
+		Status:   st,
 		Message:  status.Message,
 		Progress: float32(status.Progress),
 	}); errors.Is(err, io.EOF) {
@@ -483,9 +487,15 @@ func GetJobStatus() *JobStatus {
 	}
 }
 
-func Pause() {
+func Pause() bool {
+	var status JobStatus
 	jobContext.mu.Lock()
-	if !jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_RUNNING && len(jobContext.status.ContainerId) > 0 {
+
+	if jobContext.status == nil {
+		jobContext.mu.Unlock()
+		return false
+	}
+	if !jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_EES_RUNNING && len(jobContext.status.ContainerId) > 0 {
 		if err := g.dockerClient.ContainerPause(context.TODO(), jobContext.status.ContainerId); err != nil {
 			utils.LogError(err)
 		}
@@ -494,13 +504,22 @@ func Pause() {
 	case <-jobContext.pauseChannel:
 	default:
 	}
+	status = *jobContext.status
+	status.Paused = true
 	jobContext.status.Paused = true
 	jobContext.mu.Unlock()
+	populateJobStatus(&status)
+	return true
 }
 
-func Resume() {
+func Resume() bool {
+	var status JobStatus
 	jobContext.mu.Lock()
-	if jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_RUNNING && len(jobContext.status.ContainerId) > 0 {
+	if jobContext.status == nil {
+		jobContext.mu.Unlock()
+		return false
+	}
+	if jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_EES_RUNNING && len(jobContext.status.ContainerId) > 0 {
 		if err := g.dockerClient.ContainerUnpause(context.TODO(), jobContext.status.ContainerId); err != nil {
 			utils.LogError(err)
 		}
@@ -509,6 +528,9 @@ func Resume() {
 	case jobContext.pauseChannel <- false:
 	default:
 	}
-	jobContext.status.Paused = false
+	status = *jobContext.status
+	status.Paused = false
 	jobContext.mu.Unlock()
+	populateJobStatus(&status)
+	return true
 }
