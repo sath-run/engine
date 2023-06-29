@@ -383,13 +383,7 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) erro
 		status.Message = line
 		populateJobStatus(status)
 	}); err != nil {
-		if stderr, ok := err.(StdErr); ok {
-			status.Status = pb.EnumExecStatus_EES_ERROR
-			status.Message = stderr.Error()
-			populateJobStatus(status)
-		} else {
-			return err
-		}
+		return err
 	}
 	status.Status = pb.EnumExecStatus_EES_PROCESSING_OUPUTS
 	populateJobStatus(status)

@@ -202,8 +202,7 @@ func setupHeartBeat() {
 				if err = stream.Send(res); errors.Is(err, io.EOF) {
 					// if stream is disconnected, reconnect
 					stream, err = g.grpcClient.RouteCommand(ctx)
-				}
-				if err != nil {
+				} else if err != nil {
 					utils.LogError(err)
 				}
 			}

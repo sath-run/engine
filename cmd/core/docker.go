@@ -2,11 +2,8 @@ package core
 
 import (
 	"bufio"
-	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
@@ -18,14 +15,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/cmd/utils"
 )
-
-type StdErr struct {
-	msg string
-}
-
-func (err StdErr) Error() string {
-	return err.msg
-}
 
 type DockerImageResponse struct {
 	Format  string                 `json:"format"`
@@ -141,7 +130,7 @@ func CreateContainer(
 	cbody, err := client.ContainerCreate(ctx, &container.Config{
 		Cmd:   cmd,
 		Image: image,
-		Tty:   false,
+		Tty:   true,
 		Labels: map[string]string{
 			"run.sath.starter": os.Getenv("HOSTNAME"),
 		},
@@ -208,47 +197,18 @@ func ExecImage(
 		return err
 	}
 	defer out.Close()
-	hdr := make([]byte, 8)
-	var stderr bytes.Buffer
-	stdout := ""
-	for {
-		_, err := out.Read(hdr)
-		if err == io.EOF {
-			if len(stdout) > 0 {
-				onProgress(stdout)
-			}
-			if stderr.Len() > 0 {
-				return StdErr{msg: stderr.String()}
-			} else {
-				return nil
-			}
-		} else if err != nil {
-			return err
-		}
-		count := binary.BigEndian.Uint32(hdr[4:])
-		data := make([]byte, count)
-		_, err = out.Read(data)
-		if err != nil {
-			return err
-		}
-		switch hdr[0] {
-		case 2:
-			stderr.Write(data)
-		default:
-			content := string(data)
-			if parts := strings.Split(content, "\n"); len(parts) > 0 {
-				for i := 0; i < len(parts)-1; i++ {
-					if i == 0 {
-						onProgress(stdout + parts[0])
-					} else {
-						onProgress(parts[i])
-					}
-				}
-				stdout = parts[len(parts)-1]
-			} else {
-				stdout += content
-			}
-		}
+	scanner := bufio.NewScanner(out)
+	for scanner.Scan() {
+		onProgress(scanner.Text())
+	}
+	info, err := client.ContainerInspect(context.TODO(), containerId)
+	if err != nil {
+		return err
+	}
+	if info.State.ExitCode == 0 {
+		return ctx.Err()
+	} else {
+		return fmt.Errorf("docker container exited with code %d", info.State.ExitCode)
 	}
 }
 
