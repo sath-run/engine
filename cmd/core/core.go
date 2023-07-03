@@ -21,9 +21,11 @@ import (
 	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/host"
@@ -47,11 +49,11 @@ var (
 )
 
 type Global struct {
-	mu          sync.RWMutex
-	status      int
-	serviceDone chan bool
-
-	dumpDone chan bool
+	mu            sync.RWMutex
+	status        int
+	serviceDone   chan bool
+	dumpDone      chan bool
+	heartbeatChan chan bool
 
 	credential   LoginCredential
 	grpcConn     *grpc.ClientConn
@@ -64,9 +66,10 @@ type Global struct {
 }
 
 var g = Global{
-	serviceDone: make(chan bool),
-	dumpDone:    make(chan bool),
-	cancelJob:   nil,
+	serviceDone:   make(chan bool),
+	dumpDone:      make(chan bool),
+	heartbeatChan: make(chan bool, 16),
+	cancelJob:     nil,
 }
 
 type Config struct {
@@ -186,9 +189,8 @@ func Init(config *Config) error {
 }
 
 func setupHeartBeat() {
-	ctx := g.ContextWithToken(context.Background())
 	ticker := time.NewTicker(30 * time.Second)
-	stream, err := g.grpcClient.RouteCommand(ctx)
+	stream, err := g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO()))
 	if err != nil {
 		utils.LogError(err)
 	}
@@ -196,24 +198,38 @@ func setupHeartBeat() {
 	go func() {
 		for {
 			select {
+			case <-g.heartbeatChan:
+				stream, _ = g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO()))
 			case <-ticker.C:
 				commandChan <- &pb.CommandResponse{}
 			case res := <-commandChan:
 				if err = stream.Send(res); errors.Is(err, io.EOF) {
 					// if stream is disconnected, reconnect
-					stream, err = g.grpcClient.RouteCommand(ctx)
+					g.heartbeatChan <- true
+					continue
 				} else if err != nil {
 					utils.LogError(err)
+					continue
 				}
 			}
 		}
 	}()
 	go func() {
 		for {
-			in, err := stream.Recv()
-			if err != nil {
-				utils.LogError(err)
+			if stream == nil {
+				time.Sleep(time.Second * 5)
 				continue
+			}
+			in, err := stream.Recv()
+			st, ok := status.FromError(err)
+			if !ok {
+				utils.LogError(err)
+			} else {
+				if st.Code() == codes.Unavailable {
+					g.heartbeatChan <- true
+				}
+				utils.LogError(st.Err())
+				time.Sleep(time.Second * 1)
 			}
 			fmt.Println(in)
 		}

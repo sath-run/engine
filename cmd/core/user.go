@@ -40,6 +40,7 @@ func Login(username string, password string, organization string) error {
 	if err := saveCredential(credential); err != nil {
 		return err
 	}
+	g.heartbeatChan <- true
 	return nil
 }
 
