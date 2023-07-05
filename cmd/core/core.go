@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
@@ -49,11 +50,11 @@ var (
 )
 
 type Global struct {
-	mu            sync.RWMutex
-	status        int
-	serviceDone   chan bool
-	dumpDone      chan bool
-	heartbeatChan chan bool
+	mu                 sync.RWMutex
+	status             int
+	serviceDone        chan bool
+	dumpDone           chan bool
+	heartbeatResetChan chan bool
 
 	credential   LoginCredential
 	grpcConn     *grpc.ClientConn
@@ -66,10 +67,10 @@ type Global struct {
 }
 
 var g = Global{
-	serviceDone:   make(chan bool),
-	dumpDone:      make(chan bool),
-	heartbeatChan: make(chan bool, 16),
-	cancelJob:     nil,
+	serviceDone:        make(chan bool),
+	dumpDone:           make(chan bool),
+	heartbeatResetChan: make(chan bool),
+	cancelJob:          nil,
 }
 
 type Config struct {
@@ -194,46 +195,90 @@ func setupHeartBeat() {
 	if err != nil {
 		utils.LogError(err)
 	}
-	commandChan := make(chan *pb.CommandResponse)
 	go func() {
 		for {
-			select {
-			case <-g.heartbeatChan:
-				stream, _ = g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO()))
-			case <-ticker.C:
-				commandChan <- &pb.CommandResponse{}
-			case res := <-commandChan:
-				if err = stream.Send(res); errors.Is(err, io.EOF) {
+			<-g.heartbeatResetChan
+			stream, _ = g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO()))
+		}
+	}()
+	go func() {
+		for {
+			<-ticker.C
+			if s := stream; s != nil {
+				if err = s.Send(&pb.CommandResponse{}); errors.Is(err, io.EOF) {
 					// if stream is disconnected, reconnect
-					g.heartbeatChan <- true
-					continue
+					select {
+					case g.heartbeatResetChan <- true:
+					default: //
+					}
 				} else if err != nil {
 					utils.LogError(err)
-					continue
+				}
+			} else {
+				select {
+				case g.heartbeatResetChan <- true:
+				default: //
 				}
 			}
 		}
 	}()
 	go func() {
 		for {
-			if stream == nil {
+			if s := stream; s == nil {
 				time.Sleep(time.Second * 5)
 				continue
-			}
-			in, err := stream.Recv()
-			st, ok := status.FromError(err)
-			if !ok {
-				utils.LogError(err)
 			} else {
-				if st.Code() == codes.Unavailable {
-					g.heartbeatChan <- true
+				if err := processCmdStream(s); err != nil {
+					utils.LogError(err)
 				}
-				utils.LogError(st.Err())
-				time.Sleep(time.Second * 1)
 			}
-			fmt.Println(in)
 		}
 	}()
+}
+
+func processCmdStream(stream pb.Engine_RouteCommandClient) error {
+	in, err := stream.Recv()
+	utils.LogDebug("received cmd:", spew.Sdump(in))
+	if err != nil {
+		st, ok := status.FromError(err)
+		if !ok {
+			return errors.WithStack(err)
+		} else {
+			if st.Code() == codes.Unavailable {
+				select {
+				case g.heartbeatResetChan <- true:
+				default:
+				}
+			}
+			time.Sleep(time.Second * 1)
+			return errors.WithStack(st.Err())
+		}
+	}
+	res := pb.CommandResponse{
+		Id:      in.Id,
+		Command: in.Command,
+		Status:  pb.EnumCommandStatus_ECS_OK,
+	}
+	switch in.Command {
+	case pb.EnumCommand_EC_UNSPECIFIED:
+		res.Status = pb.EnumCommandStatus_ECS_OK
+	case pb.EnumCommand_EC_PAUSE:
+		result := Pause(in.GetData()["execId"])
+		if !result {
+			res.Status = pb.EnumCommandStatus_ECS_INVALID_STATE
+		}
+	case pb.EnumCommand_EC_RESUME:
+		result := Resume(in.GetData()["execId"])
+		if !result {
+			res.Status = pb.EnumCommandStatus_ECS_INVALID_STATE
+		}
+	default:
+		res.Status = pb.EnumCommandStatus_ECS_NOT_IMPLEMENTED
+	}
+	if err := stream.Send(&res); err != nil {
+		return errors.WithStack(err)
+	}
+	return nil
 }
 
 func Start() error {
@@ -254,6 +299,8 @@ func Start() error {
 
 	g.status = STATUS_STARTING
 	run()
+	// resume paused state
+	jobContext.Resume()
 	g.status = STATUS_RUNNING
 	return nil
 }
@@ -402,11 +449,11 @@ func dump() {
 		time.Now().Format("2006/01/02 - 15:04:05"),
 	)
 	fmt.Printf("SATH Engine status: %s\n", Status())
-	if jobContext.status == nil {
+	if jobContext.status.IsNil() {
 		fmt.Println("No job is running right now")
 	} else {
 		fmt.Println("SATH Engine current jobs:")
-		printJobs([]*JobStatus{jobContext.status})
+		printJobs([]*JobStatus{&jobContext.status})
 	}
 
 }

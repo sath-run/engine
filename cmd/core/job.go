@@ -54,13 +54,49 @@ func JobStatusText(enum pb.EnumExecStatus) string {
 	}
 }
 
-var jobContext = struct {
+type JobContext struct {
 	mu                sync.RWMutex
-	status            *JobStatus
+	status            JobStatus
 	statusSubscribers []chan JobStatus
 	pauseChannel      chan bool
 	stream            pb.Engine_NotifyExecStatusClient
-}{}
+}
+
+var jobContext = JobContext{}
+
+func (c *JobContext) Lock() {
+	// utils.LogError(errors.New("Lock"))
+	c.mu.Lock()
+}
+
+func (c *JobContext) UnLock() {
+	// utils.LogError(errors.New("UnLock"))
+	c.mu.Unlock()
+}
+
+func (c *JobContext) RLock() {
+	// utils.LogError(errors.New("RLock"))
+	c.mu.RLock()
+}
+
+func (c *JobContext) RUnLock() {
+	// utils.LogError(errors.New("RUnLock"))
+	c.mu.RUnlock()
+}
+
+func (c *JobContext) Pause() {
+	// utils.LogError(errors.New("Pause"))
+	<-c.pauseChannel
+}
+
+func (c *JobContext) Resume() {
+	// utils.LogError(errors.New("Resume"))
+	select {
+	case c.pauseChannel <- false:
+	default:
+		// utils.LogDebug("Fails to resume")
+	}
+}
 
 type JobStatus struct {
 	Id          string
@@ -75,13 +111,17 @@ type JobStatus struct {
 	UpdatedAt   time.Time
 }
 
+func (s JobStatus) IsNil() bool {
+	return s.Id == ""
+}
+
 func init() {
 	fmt.Println()
 	jobContext.pauseChannel = make(chan bool, 1)
 	jobContext.pauseChannel <- false
 }
 
-func processInputs(dir string, job *pb.JobGetResponse, status *JobStatus) error {
+func processInputs(dir string, job *pb.JobGetResponse, status JobStatus) error {
 	files := job.GetInputs()
 	dataDir := filepath.Join(dir, "/data")
 	status.Status = pb.EnumExecStatus_EES_DOWNLOADING_INPUTS
@@ -268,15 +308,15 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 	if err != nil {
 		return err
 	}
-	jobContext.mu.Lock()
+	jobContext.Lock()
 	jobContext.stream = stream
-	jobContext.mu.Unlock()
+	jobContext.UnLock()
 	status := JobStatus{
 		Id:        job.ExecId,
 		CreatedAt: time.Now(),
 		Progress:  0,
 	}
-	err = RunJob(ctx, job, &status)
+	err = RunJob(ctx, job, status)
 	status.CompletedAt = time.Now()
 	if err != nil {
 		utils.LogError(err)
@@ -292,20 +332,20 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 		status.Status = pb.EnumExecStatus_EES_SUCCESS
 	}
 
-	err = populateJobStatus(&status)
+	err = populateJobStatus(status)
 	if err != nil {
 		// if fail to populate job status to server, we still need to notify clients
 		status.Status = pb.EnumExecStatus_EES_ERROR
 		status.Message = err.Error()
-		notifyJobStatusToClients(&status)
+		notifyJobStatusToClients(status)
 	}
-	jobContext.mu.RLock()
+	jobContext.RLock()
 	_, err = jobContext.stream.CloseAndRecv()
-	jobContext.mu.RUnlock()
+	jobContext.RUnLock()
 	return err
 }
 
-func RunJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) error {
+func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) error {
 	if ref, err := reference.ParseNormalizedNamed(job.Image.Url); err == nil {
 		status.Image = ref.Name()
 	} else {
@@ -395,15 +435,15 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status *JobStatus) erro
 	return nil
 }
 
-func populateJobStatus(status *JobStatus) error {
+func populateJobStatus(status JobStatus) error {
 	err := notifyJobStatusToServer(status, 0, 3)
 	notifyJobStatusToClients(status)
 	return errors.WithStack(err)
 }
 
-func notifyJobStatusToServer(status *JobStatus, retry int, maxRetry int) error {
+func notifyJobStatusToServer(status JobStatus, retry int, maxRetry int) error {
 	status.UpdatedAt = time.Now()
-	jobContext.mu.Lock()
+	jobContext.Lock()
 	st := status.Status
 	if status.Paused && !jobContext.status.Paused {
 		st = pb.EnumExecStatus_EES_PAUSED
@@ -414,7 +454,7 @@ func notifyJobStatusToServer(status *JobStatus, retry int, maxRetry int) error {
 		Progress: float32(status.Progress),
 	}); errors.Is(err, io.EOF) {
 		if retry >= maxRetry {
-			jobContext.mu.Unlock()
+			jobContext.UnLock()
 			return errors.Wrap(err, "max retry exceeded")
 		}
 		// server may ternimate stream connection after a configured idle timeout
@@ -425,45 +465,42 @@ func notifyJobStatusToServer(status *JobStatus, retry int, maxRetry int) error {
 		}
 		jobContext.stream.CloseSend()
 		jobContext.stream = stream
-		jobContext.mu.Unlock()
+		jobContext.UnLock()
 		return notifyJobStatusToServer(status, retry+1, maxRetry)
 	} else if err != nil {
 		err = errors.WithStack(err)
-		jobContext.mu.Unlock()
+		jobContext.UnLock()
 		return err
 	}
-	jobContext.mu.Unlock()
+	jobContext.UnLock()
 	return nil
 }
 
-func notifyJobStatusToClients(status *JobStatus) error {
-	<-jobContext.pauseChannel
-	jobContext.mu.Lock()
-	defer jobContext.mu.Unlock()
-	jobContext.status = status
+func notifyJobStatusToClients(status JobStatus) error {
+	jobContext.Pause()
+	jobContext.Lock()
+	defer jobContext.UnLock()
 	for _, c := range jobContext.statusSubscribers {
-		c <- *status
+		c <- status
 	}
 	status.Message = ""
-	if !jobContext.status.Paused {
-		select {
-		case jobContext.pauseChannel <- false:
-		default:
-		}
+	jobContext.status = status
+	if !status.Paused {
+		jobContext.Resume()
 	}
 	return nil
 }
 
 func SubscribeJobStatus(channel chan JobStatus) {
-	jobContext.mu.Lock()
-	defer jobContext.mu.Unlock()
+	jobContext.Lock()
+	defer jobContext.UnLock()
 
 	jobContext.statusSubscribers = append(jobContext.statusSubscribers, channel)
 }
 
 func UnsubscribeJobStatus(channel chan JobStatus) {
-	jobContext.mu.Lock()
-	defer jobContext.mu.Unlock()
+	jobContext.Lock()
+	defer jobContext.UnLock()
 
 	subscribers := make([]chan JobStatus, 0)
 	for _, c := range jobContext.statusSubscribers {
@@ -476,23 +513,27 @@ func UnsubscribeJobStatus(channel chan JobStatus) {
 }
 
 func GetJobStatus() *JobStatus {
-	jobContext.mu.RLock()
-	defer jobContext.mu.RUnlock()
+	jobContext.RLock()
+	defer jobContext.RUnLock()
 
-	if jobContext.status == nil {
+	if jobContext.status.IsNil() {
 		return nil
 	} else {
-		var status JobStatus = *jobContext.status
+		var status JobStatus = jobContext.status
 		return &status
 	}
 }
 
-func Pause() bool {
+func Pause(execId string) bool {
 	var status JobStatus
-	jobContext.mu.Lock()
+	jobContext.Lock()
 
-	if jobContext.status == nil {
-		jobContext.mu.Unlock()
+	if jobContext.status.IsNil() {
+		jobContext.UnLock()
+		return false
+	}
+	if len(execId) > 0 && jobContext.status.Id != execId {
+		jobContext.UnLock()
 		return false
 	}
 	if !jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_EES_RUNNING && len(jobContext.status.ContainerId) > 0 {
@@ -500,23 +541,24 @@ func Pause() bool {
 			utils.LogError(err)
 		}
 	}
-	select {
-	case <-jobContext.pauseChannel:
-	default:
-	}
-	status = *jobContext.status
+
+	status = jobContext.status
 	status.Paused = true
 	jobContext.status.Paused = true
-	jobContext.mu.Unlock()
-	populateJobStatus(&status)
+	jobContext.UnLock()
+	populateJobStatus(status)
 	return true
 }
 
-func Resume() bool {
+func Resume(execId string) bool {
 	var status JobStatus
-	jobContext.mu.Lock()
-	if jobContext.status == nil {
-		jobContext.mu.Unlock()
+	jobContext.Lock()
+	if jobContext.status.IsNil() {
+		jobContext.UnLock()
+		return false
+	}
+	if len(execId) > 0 && jobContext.status.Id != execId {
+		jobContext.UnLock()
 		return false
 	}
 	if jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_EES_RUNNING && len(jobContext.status.ContainerId) > 0 {
@@ -524,13 +566,10 @@ func Resume() bool {
 			utils.LogError(err)
 		}
 	}
-	select {
-	case jobContext.pauseChannel <- false:
-	default:
-	}
-	status = *jobContext.status
+	jobContext.Resume()
+	status = jobContext.status
 	status.Paused = false
-	jobContext.mu.Unlock()
-	populateJobStatus(&status)
+	jobContext.UnLock()
+	populateJobStatus(status)
 	return true
 }

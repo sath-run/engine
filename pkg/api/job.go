@@ -122,14 +122,14 @@ func GetJobStatus(c *gin.Context) {
 }
 
 func PauseJob(c *gin.Context) {
-	success := core.Pause()
+	success := core.Pause("")
 	c.JSON(http.StatusOK, gin.H{
 		"success": success,
 	})
 }
 
 func ResumeJob(c *gin.Context) {
-	success := core.Resume()
+	success := core.Resume("")
 	c.JSON(http.StatusOK, gin.H{
 		"success": success,
 	})
