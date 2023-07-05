@@ -198,13 +198,19 @@ func setupHeartBeat() {
 	go func() {
 		for {
 			<-g.heartbeatResetChan
-			stream, _ = g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO()))
+			if s, err := g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO())); err != nil {
+				utils.LogError(err)
+			} else {
+				utils.LogDebug("Reconnected")
+				stream = s
+			}
 		}
 	}()
 	go func() {
 		for {
 			<-ticker.C
 			if s := stream; s != nil {
+				utils.LogDebug("Send Heartbeat")
 				if err = s.Send(&pb.CommandResponse{}); errors.Is(err, io.EOF) {
 					// if stream is disconnected, reconnect
 					select {
