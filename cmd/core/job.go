@@ -544,7 +544,6 @@ func Pause(execId string) bool {
 
 	status = jobContext.status
 	status.Paused = true
-	jobContext.status.Paused = true
 	jobContext.UnLock()
 	populateJobStatus(status)
 	return true
