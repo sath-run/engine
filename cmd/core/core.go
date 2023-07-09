@@ -186,6 +186,7 @@ func Init(config *Config) error {
 
 	g.status = STATUS_WAITING
 	utils.LogDebug("core initialized")
+
 	return nil
 }
 
@@ -195,21 +196,27 @@ func setupHeartBeat() {
 	if err != nil {
 		utils.LogError(err)
 	}
+	var mu sync.RWMutex
 	go func() {
 		for {
 			<-g.heartbeatResetChan
 			if s, err := g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO())); err != nil {
 				utils.LogError(err)
 			} else {
-				utils.LogDebug("Reconnected")
+				utils.LogDebug("RouteCommand stream reconnected")
+				mu.Lock()
 				stream = s
+				mu.Unlock()
 			}
 		}
 	}()
 	go func() {
 		for {
 			<-ticker.C
-			if s := stream; s != nil {
+			mu.RLock()
+			s := stream
+			mu.RUnlock()
+			if s != nil {
 				utils.LogDebug("Send Heartbeat")
 				if err = s.Send(&pb.CommandResponse{}); errors.Is(err, io.EOF) {
 					// if stream is disconnected, reconnect
@@ -230,7 +237,10 @@ func setupHeartBeat() {
 	}()
 	go func() {
 		for {
-			if s := stream; s == nil {
+			mu.RLock()
+			s := stream
+			mu.RUnlock()
+			if s == nil {
 				time.Sleep(time.Second * 5)
 				continue
 			} else {
