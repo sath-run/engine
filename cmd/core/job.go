@@ -461,6 +461,7 @@ func notifyJobStatusToServer(status JobStatus, retry int, maxRetry int) error {
 		// in this case, reconnect and try it again
 		stream, err := g.grpcClient.NotifyExecStatus(jobContext.stream.Context())
 		if err != nil {
+			jobContext.UnLock()
 			return err
 		}
 		jobContext.stream.CloseSend()
