@@ -221,8 +221,8 @@ func StopCurrentRunningContainers(client *client.Client) error {
 	if err != nil {
 		return err
 	}
-	for _, container := range containers {
-		if err := client.ContainerStop(ctx, container.ID, nil); err != nil {
+	for _, c := range containers {
+		if err := client.ContainerStop(ctx, c.ID, nil); err != nil {
 			return err
 		}
 	}

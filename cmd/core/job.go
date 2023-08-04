@@ -109,6 +109,7 @@ type JobStatus struct {
 	CreatedAt   time.Time
 	CompletedAt time.Time
 	UpdatedAt   time.Time
+	GpuOpts     string
 }
 
 func (s JobStatus) IsNil() bool {
@@ -315,6 +316,7 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 		Id:        job.ExecId,
 		CreatedAt: time.Now(),
 		Progress:  0,
+		GpuOpts:   job.GpuOpts,
 	}
 	err = RunJob(ctx, job, status)
 	status.CompletedAt = time.Now()
@@ -448,11 +450,17 @@ func notifyJobStatusToServer(status JobStatus, retry int, maxRetry int) error {
 	if status.Paused && !jobContext.status.Paused {
 		st = pb.EnumExecStatus_EES_PAUSED
 	}
-	if err := jobContext.stream.Send(&pb.ExecNotificationRequest{
+	req := &pb.ExecNotificationRequest{
 		Status:   st,
 		Message:  status.Message,
 		Progress: float32(status.Progress),
-	}); errors.Is(err, io.EOF) {
+	}
+	if status.GpuOpts != "" {
+		req.GpuStats = []*pb.GpuStats{
+			{Id: 0},
+		}
+	}
+	if err := jobContext.stream.Send(req); errors.Is(err, io.EOF) {
 		if retry >= maxRetry {
 			jobContext.UnLock()
 			return errors.Wrap(err, "max retry exceeded")

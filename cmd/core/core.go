@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -27,10 +26,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-
-	"github.com/shirou/gopsutil/v3/cpu"
-	"github.com/shirou/gopsutil/v3/host"
-	"github.com/shirou/gopsutil/v3/mem"
 )
 
 const VERSION = "1.6.0"
@@ -143,13 +138,9 @@ func Init(config *Config) error {
 	if cred := readCredential(); cred != nil {
 		g.credential = *cred
 	}
-	sysInfo := ""
 
-	if sysInfo, err = getSystemInfo(); err != nil {
-		return err
-	}
 	resp, err := g.grpcClient.HandShake(g.ContextWithToken(context.TODO()), &pb.HandShakeRequest{
-		SystemInfo: sysInfo,
+		SystemInfo: GetSystemInfo(),
 	})
 	if err != nil {
 		return errors.WithStack(err)
@@ -401,43 +392,6 @@ func cleanup() error {
 		return err
 	}
 	return nil
-}
-
-func getSystemInfo() (string, error) {
-	cpus, err := cpu.Info()
-	if err != nil {
-		return "", errors.WithStack(err)
-	}
-	hostInfo, err := host.Info()
-	if err != nil {
-		return "", errors.WithStack(err)
-	}
-
-	meminfo, err := mem.VirtualMemory()
-	if err != nil {
-		return "", errors.WithStack(err)
-	}
-
-	info := map[string]interface{}{
-		"cpus": cpus,
-		"host": map[string]interface{}{
-			"os":              hostInfo.OS,
-			"platform":        hostInfo.Platform,
-			"platformFamily":  hostInfo.PlatformFamily,
-			"platformVersion": hostInfo.PlatformVersion,
-			"kernelVersion":   hostInfo.KernelVersion,
-			"kernelArch":      hostInfo.KernelArch,
-		},
-		"memory": map[string]interface{}{
-			"total": meminfo.Total,
-		},
-	}
-
-	bytes, err := json.Marshal(&info)
-	if err != nil {
-		return "", errors.WithStack(err)
-	}
-	return string(bytes), nil
 }
 
 func setupDump() {
