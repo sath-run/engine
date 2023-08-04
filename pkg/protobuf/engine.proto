@@ -5,6 +5,7 @@ option go_package = "github.com/sath-run/engine/pkg/protobuf";
 package protobuf;
 
 import "job.proto";
+import "sys.proto";
 
 service engine {
   rpc HandShake(HandShakeRequest) returns (HandShakeResponse);
@@ -15,7 +16,7 @@ service engine {
 }
 
 message HandShakeRequest {
-  string system_info = 1;
+  SystemInfo system_info = 1;
 }
 
 message HandShakeResponse {

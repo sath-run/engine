@@ -75,8 +75,13 @@ message ExecNotificationRequest {
   EnumExecStatus status = 1;
   string message = 2;
   float progress = 3;
+  repeated GpuStats gpu_stats = 4;
 }
 
 message ExecNotificationResponse {
 
+}
+
+message GpuStats {
+  int32 id = 1;
 }
