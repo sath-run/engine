@@ -20,4 +20,5 @@
 
 .sath.credential
 log/
-cmd
+playground/
+/cmd/cmd
