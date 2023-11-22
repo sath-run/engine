@@ -23,13 +23,16 @@ func main() {
 	flag.Parse()
 	grpcAddr := "scheduler.sath.run:50051"
 	ssl := true
-	host := "localhost:33566"
+	// host := "localhost:33566"
+	sockfile := "/var/run/sathcli.sock"
 	if strings.ToLower(os.Getenv("SATH_MODE")) == "debug" {
 		ssl = false
 		grpcAddr = debugGrpc + ":50051"
 	} else {
 		gin.SetMode(gin.ReleaseMode)
 	}
+	// 若sockfile已存在则删除
+	os.Remove(sockfile)
 
 	err := core.Init(&core.Config{
 		GrpcAddress: grpcAddr,
@@ -47,6 +50,6 @@ func main() {
 	// 	}
 	// }
 
-	api.Init(host)
+	api.Init(sockfile)
 
 }

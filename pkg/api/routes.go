@@ -21,10 +21,11 @@ func fatal(c *gin.Context, err error) bool {
 		return true
 	}
 }
-func Init(addr string) {
+func Init(file string) {
 	utils.LogDebug("initializing api")
 	r := gin.Default()
-	r.SetTrustedProxies([]string{"127.0.0.1"})
+	// r.SetTrustedProxies([]string{"unix"})
+	r.SetTrustedProxies(nil)
 
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -42,5 +43,6 @@ func Init(addr string) {
 	r.POST("/users/login", Login)
 	r.POST("/users/logout", Logout)
 	r.GET("/users/credential", GetCredential)
-	r.Run(addr)
+
+	r.RunUnix(file)
 }
