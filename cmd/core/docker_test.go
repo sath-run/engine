@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/google/shlex"
 	"github.com/sath-run/engine/cmd/core"
 	"github.com/sath-run/engine/cmd/utils"
 )
@@ -240,3 +241,22 @@ func TestImageName(t *testing.T) {
 // 		panic(err)
 // 	}
 // }
+
+func TestCmd(t *testing.T) {
+	ctx := context.Background()
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	checkErr(err)
+	cmds, err := shlex.Split(`
+		bash -c "python -c 'print(7*7)' > output/result.txt"
+	`)
+	checkErr(err)
+	containerId, err := core.CreateContainer(ctx, dockerClient, cmds, "sathrun/base", "", "cmd_test", []string{
+		"/tmp/sath/output:/output",
+	})
+	checkErr(err)
+	fmt.Println("containerId: ", containerId)
+	err = core.ExecImage(ctx, dockerClient, containerId, func(line string) {
+		fmt.Println(line)
+	})
+	checkErr(err)
+}

@@ -1,12 +1,9 @@
 package core
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"os"
 	"path/filepath"
 	"sync"
@@ -110,6 +107,7 @@ type JobStatus struct {
 	CompletedAt time.Time
 	UpdatedAt   time.Time
 	GpuOpts     string
+	Outputs     []*pb.ExecOutput
 }
 
 func (s JobStatus) IsNil() bool {
@@ -117,7 +115,6 @@ func (s JobStatus) IsNil() bool {
 }
 
 func init() {
-	fmt.Println()
 	jobContext.pauseChannel = make(chan bool, 1)
 	jobContext.pauseChannel <- false
 }
@@ -127,9 +124,9 @@ func processInputs(dir string, job *pb.JobGetResponse, status JobStatus) error {
 	dataDir := filepath.Join(dir, "/data")
 	status.Status = pb.EnumExecStatus_EES_DOWNLOADING_INPUTS
 	for _, file := range files {
-		status.Message = fmt.Sprintf("start download %s", file.Name)
+		status.Message = fmt.Sprintf("start download %s", file.Path)
 		populateJobStatus(status)
-		filePath := filepath.Join(dataDir, file.Name)
+		filePath := filepath.Join(dataDir, file.Path)
 		err := func() error {
 			out, err := os.Create(filePath)
 			if err != nil {
@@ -137,7 +134,7 @@ func processInputs(dir string, job *pb.JobGetResponse, status JobStatus) error {
 			}
 			defer out.Close()
 
-			resp, err := retryablehttp.Get(file.Url)
+			resp, err := retryablehttp.Get(file.Path)
 			if err != nil {
 				return err
 			}
@@ -158,136 +155,63 @@ func processInputs(dir string, job *pb.JobGetResponse, status JobStatus) error {
 	return nil
 }
 
-func processOutputs(dir string, job *pb.JobGetResponse) error {
-	output := job.GetOutput()
-	if output == nil {
-		return errors.New("job output is nil")
-	}
+func processOutputs(dir string, job *pb.JobGetResponse) ([]*pb.ExecOutput, error) {
+	outputs := make([]*pb.ExecOutput, len(job.GetOutputs()))
 	outputDir := filepath.Join(dir, "/output")
 
-	// tar + gzip
-	var buf bytes.Buffer
-	if err := utils.Compress(outputDir, &buf); err != nil {
-		return err
-	}
+	for i, output := range job.GetOutputs() {
+		outputs[i] = &pb.ExecOutput{
+			Id:     output.Id,
+			Status: pb.ExecOutputStatus_EOS_SUCCESS,
+		}
+		path := filepath.Join(outputDir, output.Path)
+		data, err := os.Open(path)
+		if err != nil {
+			utils.LogDebug("file not found:", path)
+			continue
+		}
+		defer data.Close()
 
-	var method string
-	switch output.Method {
-	case pb.EnumFileRequestMethod_EFRM_HTTP_POST:
-		method = "POST"
-	case pb.EnumFileRequestMethod_EFRM_HTTP_PUT:
-		method = "PUT"
-	default:
-		method = "GET"
-	}
-
-	url := job.Output.Url
-	headers := job.Output.Headers
-	data := job.Output.Data
-
-	if headers["Content-Type"] == "application/json" {
-		body, err := json.Marshal(data)
-		if err != nil {
-			return err
-		}
-		req, err := retryablehttp.NewRequest(method, url, body)
-		if err != nil {
-			return err
-		}
-		for k, v := range headers {
-			req.Header.Set(k, v)
-		}
-		res, err := retryablehttp.NewClient().Do(req)
-		if err != nil {
-			return err
-		}
-		body, err = io.ReadAll(res.Body)
-		if err != nil {
-			return err
-		}
-		res.Body.Close()
-		var obj struct {
-			Url     string            `json:"url"`
-			Method  string            `json:"method"`
-			Headers map[string]string `json:"headers"`
-			Data    map[string]string `json:"data"`
-		}
-		if err := json.Unmarshal(body, &obj); err != nil {
-			return err
-		}
-		url = obj.Url
-		headers = obj.Headers
-		method = obj.Method
-		data = obj.Data
-	}
-	if err := uploadOutput(url, method, headers, data, buf); err != nil {
-		return err
-	}
-	return nil
-}
-
-func uploadOutput(url, method string, headers, data map[string]string, buf bytes.Buffer) error {
-	if headers["Content-Type"] == "multipart/form-data" {
-		body := &bytes.Buffer{}
-		writer := multipart.NewWriter(body)
-		fieldname := data["SATH_OUTPUT_FILED_NAME"]
-		if len(fieldname) == 0 {
-			fieldname = "file"
-		}
-		filename := data["SATH_OUTPUT_FILED_NAME"]
-		if len(filename) == 0 {
-			filename = "output.tar.gz"
-		}
-		part, err := writer.CreateFormFile(fieldname, filename)
-		if err != nil {
-			return err
-		}
-		_, err = io.Copy(part, &buf)
-		if err != nil {
-			return err
+		if output.Req == nil {
+			// if output request is not specified, return file content
+			fs, err := data.Stat()
+			if err != nil {
+				return nil, err
+			}
+			fileSizeInMB := float64(fs.Size()) / 1024 / 1024
+			if fileSizeInMB > 1 {
+				return nil, fmt.Errorf(
+					"file %s is too large, size limit is 1MB, actual size is %.2fMB",
+					output.Path,
+					fileSizeInMB)
+			}
+			bytes, err := io.ReadAll(data)
+			if err != nil {
+				return nil, err
+			}
+			outputs[i].Content = bytes
+		} else {
+			// upload output file to url
+			req, err := retryablehttp.NewRequest(output.Req.Method, output.Req.Url, data)
+			if err != nil {
+				return nil, err
+			}
+			for _, header := range output.Req.Headers {
+				req.Header.Set(header.Name, header.Value)
+			}
+			resp, err := retryablehttp.NewClient().Do(req)
+			if err != nil {
+				return nil, err
+			} else if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+				data, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				return nil, fmt.Errorf("fail to upload data, stats: %d, data: %s", resp.StatusCode, string(data))
+			}
 		}
 
-		for key, val := range data {
-			_ = writer.WriteField(key, val)
-		}
-		if err := writer.Close(); err != nil {
-			return err
-		}
-		req, err := retryablehttp.NewRequest(method, url, body)
-		if err != nil {
-			return err
-		}
-		for k, v := range headers {
-			req.Header.Set(k, v)
-		}
-		req.Header.Set("Content-Type", writer.FormDataContentType())
-		client := retryablehttp.NewClient()
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		} else if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-			data, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return fmt.Errorf("fail to upload data, stats: %d, data: %s", resp.StatusCode, string(data))
-		}
-	} else {
-		req, err := retryablehttp.NewRequest(method, url, &buf)
-		if err != nil {
-			return err
-		}
-		for k, v := range headers {
-			req.Header.Set(k, v)
-		}
-		resp, err := retryablehttp.NewClient().Do(req)
-		if err != nil {
-			return err
-		} else if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-			data, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return fmt.Errorf("fail to upload data, stats: %d, data: %s", resp.StatusCode, string(data))
-		}
 	}
-	return nil
+
+	return outputs, nil
 }
 
 func RunSingleJob(ctx context.Context, orgId string) error {
@@ -316,10 +240,11 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 		Id:        job.ExecId,
 		CreatedAt: time.Now(),
 		Progress:  0,
-		GpuOpts:   job.GpuOpts,
+		GpuOpts:   job.GpuOpt.String(),
 	}
-	err = RunJob(ctx, job, status)
+	outputs, err := RunJob(ctx, job, status)
 	status.CompletedAt = time.Now()
+	status.Outputs = outputs
 	if err != nil {
 		utils.LogError(err)
 		if errors.Is(err, context.Canceled) {
@@ -347,7 +272,7 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 	return err
 }
 
-func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) error {
+func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) ([]*pb.ExecOutput, error) {
 	if ref, err := reference.ParseNormalizedNamed(job.Image.Url); err == nil {
 		status.Image = ref.Name()
 	} else {
@@ -361,7 +286,7 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) error
 
 	dir, err := os.MkdirTemp(g.localDataDir, "sath_tmp_*")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() {
 		if err := os.RemoveAll(dir); err != nil {
@@ -370,13 +295,13 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) error
 	}()
 
 	if err := os.MkdirAll(filepath.Join(dir, "/data"), os.ModePerm); err != nil {
-		return err
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "/output"), os.ModePerm); err != nil {
-		return err
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "/source"), os.ModePerm); err != nil {
-		return err
+		return nil, err
 	}
 
 	localDataDir := dir
@@ -393,16 +318,26 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) error
 		status.Message = text
 		populateJobStatus(status)
 	}); err != nil {
-		return err
+		return nil, err
 	}
 
 	status.Status = pb.EnumExecStatus_EES_PROCESSING_INPUTS
 	if err = processInputs(localDataDir, job, status); err != nil {
-		return err
+		return nil, err
 	}
 
 	status.Status = pb.EnumExecStatus_EES_RUNNING
 	populateJobStatus(status)
+
+	if len(job.Volume.Data) == 0 {
+		job.Volume.Data = "/data"
+	}
+	if len(job.Volume.Source) == 0 {
+		job.Volume.Source = "/source"
+	}
+	if len(job.Volume.Output) == 0 {
+		job.Volume.Output = "/output"
+	}
 
 	binds := []string{
 		fmt.Sprintf("%s:%s", filepath.Join(hostDir, "/data"), job.Volume.Data),
@@ -412,12 +347,17 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) error
 
 	containerName := fmt.Sprintf("sath-%s", job.ExecId)
 
+	gpuOpts := ""
+	if job.GpuOpt == pb.GpuOpt_EGO_REQUIRED || job.GpuOpt == pb.GpuOpt_EGO_PREFERRED {
+		gpuOpts = "all"
+	}
+
 	// create container
 	containerId, err := CreateContainer(
 		ctx, g.dockerClient, job.Cmd, job.Image.Url,
-		job.GpuOpts, containerName, binds)
+		gpuOpts, containerName, binds)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	status.ContainerId = containerId
 	if err := ExecImage(ctx, g.dockerClient, containerId, func(line string) {
@@ -425,16 +365,16 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) error
 		status.Message = line
 		populateJobStatus(status)
 	}); err != nil {
-		return err
+		return nil, err
 	}
 	status.Status = pb.EnumExecStatus_EES_PROCESSING_OUPUTS
 	populateJobStatus(status)
 
-	if err := processOutputs(dir, job); err != nil {
-		return err
+	outputs, err := processOutputs(dir, job)
+	if err != nil {
+		return nil, err
 	}
-
-	return nil
+	return outputs, nil
 }
 
 func populateJobStatus(status JobStatus) error {
@@ -454,6 +394,7 @@ func notifyJobStatusToServer(status JobStatus, retry int, maxRetry int) error {
 		Status:   st,
 		Message:  status.Message,
 		Progress: float32(status.Progress),
+		Outputs:  status.Outputs,
 	}
 	if status.GpuOpts != "" {
 		req.GpuStats = []*pb.GpuStats{
@@ -569,7 +510,9 @@ func Resume(execId string) bool {
 		jobContext.UnLock()
 		return false
 	}
-	if jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_EES_RUNNING && len(jobContext.status.ContainerId) > 0 {
+	if jobContext.status.Paused &&
+		jobContext.status.Status == pb.EnumExecStatus_EES_RUNNING &&
+		len(jobContext.status.ContainerId) > 0 {
 		if err := g.dockerClient.ContainerUnpause(context.TODO(), jobContext.status.ContainerId); err != nil {
 			utils.LogError(err)
 		}
