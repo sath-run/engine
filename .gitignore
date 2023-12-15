@@ -18,7 +18,5 @@
 # protobuf
 *.pb.go
 
-.sath.credential
-log/
-playground/
-/cmd/cmd
+bin/
+.DS_Store
