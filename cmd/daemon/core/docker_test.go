@@ -17,8 +17,8 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/google/shlex"
-	"github.com/sath-run/engine/cmd/core"
-	"github.com/sath-run/engine/cmd/utils"
+	"github.com/sath-run/engine/cmd/daemon/core"
+	"github.com/sath-run/engine/pkg/utils"
 )
 
 func TestDockerPull(t *testing.T) {

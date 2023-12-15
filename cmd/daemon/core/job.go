@@ -13,8 +13,8 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
-	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
+	"github.com/sath-run/engine/pkg/utils"
 	"google.golang.org/grpc/metadata"
 )
 

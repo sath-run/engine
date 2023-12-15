@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sath-run/engine/cmd/utils"
+	"github.com/sath-run/engine/pkg/utils"
 )
 
 func fatal(c *gin.Context, err error) bool {
@@ -44,5 +44,7 @@ func Init(file string) {
 	r.POST("/users/logout", Logout)
 	r.GET("/users/credential", GetCredential)
 
-	r.RunUnix(file)
+	if err := r.RunUnix(file); err != nil {
+		panic(err)
+	}
 }

@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sath-run/engine/cmd/utils"
 	pb "github.com/sath-run/engine/pkg/protobuf"
+	"github.com/sath-run/engine/pkg/utils"
 )
 
 type LoginCredential struct {

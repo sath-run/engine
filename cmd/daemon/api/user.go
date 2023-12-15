@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sath-run/engine/cmd/core"
+	"github.com/sath-run/engine/cmd/daemon/core"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
