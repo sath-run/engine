@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sath-run/engine/cmd/daemon/core"
+	"github.com/sath-run/engine/cmd/core"
 )
 
 func StartService(c *gin.Context) {

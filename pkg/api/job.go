@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sath-run/engine/cmd/daemon/core"
-	"github.com/sath-run/engine/pkg/utils"
+	"github.com/sath-run/engine/cmd/core"
+	"github.com/sath-run/engine/cmd/utils"
 )
 
 type JobStatus struct {
