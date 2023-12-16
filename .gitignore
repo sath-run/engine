@@ -18,5 +18,6 @@
 # protobuf
 *.pb.go
 
-bin/
+build/
+deploy/
 .DS_Store

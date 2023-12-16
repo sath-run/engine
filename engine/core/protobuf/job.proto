@@ -1,0 +1,109 @@
+syntax = "proto3";
+package protobuf;
+option go_package = "github.com/sath-run/engine/engine/core/protobuf";
+
+enum EnumExecStatus {
+  EES_UNSPECIFIED = 0;
+	EES_STARTED = 10;
+	EES_PULLING_IMAGE = 20;
+  EES_DOWNLOADING_INPUTS = 30;
+  EES_PROCESSING_INPUTS = 40; 
+  EES_RUNNING = 50;
+  EES_PROCESSING_OUPUTS = 60;
+  EES_UPLOADING_OUTPUTS = 70;
+	EES_SUCCESS = 80;
+	EES_CANCELED = 90;
+	EES_ERROR = 100;
+  EES_PAUSED = 110;
+}
+
+message JobGetRequest {
+  string version = 1;
+  string project_id = 2;
+  string organization_id = 3;
+  string user_id = 4;
+}
+
+enum GpuOpt {
+  EGO_None = 0;
+  EGO_PREFERRED = 10;
+  EGO_REQUIRED = 100;
+}
+
+message JobGetResponse {
+  string project_id = 1;
+  string job_id = 2;
+  string exec_id = 3;
+  Image image = 4;
+  GpuOpt gpu_opt = 5;
+  Volume volume = 6;
+  repeated string cmd = 7;
+  repeated JobInput inputs = 8;
+  repeated JobOutput outputs = 9;
+}
+
+message Volume {
+  string data = 1;
+  string source = 2;
+  string output = 3;
+}
+
+message FileRequest {
+  string url = 1;
+  string method = 2;
+  repeated RequestHeader headers = 3;
+}
+
+message RequestHeader {
+  string name = 1;
+  string value = 2;
+}
+
+message JobInput {
+  string path = 1;
+  FileRequest req = 2;
+  uint64 size = 3;
+  bytes content = 4;
+  string configs = 5;
+}
+
+message JobOutput {
+  string id = 1;
+  string path = 2;
+  FileRequest req = 3;
+  string configs = 4;
+}
+
+message Image {
+  string url = 1;
+  string auth = 2;
+}
+
+message ExecNotificationRequest {
+  EnumExecStatus status = 1;
+  string message = 2;
+  float progress = 3;
+  repeated GpuStats gpu_stats = 4;
+  repeated ExecOutput outputs = 5;
+}
+
+enum ExecOutputStatus {
+  EOS_UNSPECIFIED = 0;
+  EOS_SUCCESS = 10;
+  EOS_ERROR = 20;
+}
+
+message ExecOutput {
+  string id = 1;
+  ExecOutputStatus status = 2;
+  string message = 3;
+  bytes content = 4;
+}
+
+message ExecNotificationResponse {
+
+}
+
+message GpuStats {
+  int32 id = 1;
+}
