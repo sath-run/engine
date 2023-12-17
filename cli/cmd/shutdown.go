@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sath-run/engine/cli/request"
 	"github.com/spf13/cobra"
 )
 
@@ -39,12 +40,8 @@ func findRunningDaemonPid() (pid int, err error) {
 }
 
 func runShutdown(cmd *cobra.Command, args []string) {
-	// wait, err := cmd.Flags().GetBool("wait")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// resp := EnginePost("/services/shutdown", map[string]interface{}{"wait": wait})
-	// fmt.Println(resp["message"])
+	resp := request.EnginePost("/services/stop", map[string]interface{}{"wait": true})
+	fmt.Println(resp["message"])
 	pid, err := findRunningDaemonPid()
 	if err != nil {
 		fmt.Println(err)

@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -18,7 +17,9 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
+	"github.com/sath-run/engine/constants"
 	pb "github.com/sath-run/engine/engine/core/protobuf"
+	"github.com/sath-run/engine/engine/logger"
 	"github.com/sath-run/engine/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -27,8 +28,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
-
-const VERSION = "1.6.0"
 
 const (
 	STATUS_UNINITIALIZED = iota
@@ -72,13 +71,12 @@ type Config struct {
 	GrpcAddress string
 	SSL         bool
 	DataDir     string
-	HostDir     string
 }
 
 func (g *Global) ContextWithToken(ctx context.Context) context.Context {
 	return metadata.AppendToOutgoingContext(ctx,
 		"authorization", g.credential.Token,
-		"version", VERSION)
+		"version", constants.Version)
 }
 
 func GetDockerClient() *client.Client {
@@ -103,7 +101,7 @@ func Status() string {
 }
 
 func Init(config *Config) error {
-	utils.LogDebug("initializing core")
+	logger.Debug("initializing core")
 	// // Set up a connection to the server.
 	var err error
 
@@ -156,17 +154,17 @@ func Init(config *Config) error {
 		}
 	}
 
-	if len(config.DataDir) > 0 {
-		g.localDataDir = config.DataDir
-	} else if dir, err := utils.GetExecutableDir(); err != nil {
-		panic(err)
-	} else if err := os.MkdirAll(filepath.Join(dir, "data"), os.ModePerm); err != nil {
-		panic(err)
+	g.localDataDir = filepath.Join(utils.ExecutableDir, "/data")
+
+	if os.Getenv("SATH_ENV") == "docker" {
+		g.hostDataDir = config.DataDir
 	} else {
-		g.localDataDir = filepath.Join(dir, "data")
+		g.hostDataDir = g.localDataDir
 	}
 
-	g.hostDataDir = config.HostDir
+	if err := os.MkdirAll(g.localDataDir, os.ModePerm); err != nil {
+		log.Fatal(err)
+	}
 
 	if err := StopCurrentRunningContainers(g.dockerClient); err != nil {
 		panic(err)
@@ -176,7 +174,7 @@ func Init(config *Config) error {
 	setupDump()
 
 	g.status = STATUS_WAITING
-	utils.LogDebug("core initialized")
+	logger.Debug("core initialized")
 
 	return nil
 }
@@ -185,16 +183,16 @@ func setupHeartBeat() {
 	ticker := time.NewTicker(30 * time.Second)
 	stream, err := g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO()))
 	if err != nil {
-		utils.LogError(err)
+		logger.Error(err)
 	}
 	var mu sync.RWMutex
 	go func() {
 		for {
 			<-g.heartbeatResetChan
 			if s, err := g.grpcClient.RouteCommand(g.ContextWithToken(context.TODO())); err != nil {
-				utils.LogError(err)
+				logger.Error(err)
 			} else {
-				utils.LogDebug("RouteCommand stream reconnected")
+				logger.Debug("RouteCommand stream reconnected")
 				mu.Lock()
 				stream = s
 				mu.Unlock()
@@ -208,7 +206,7 @@ func setupHeartBeat() {
 			s := stream
 			mu.RUnlock()
 			if s != nil {
-				utils.LogDebug("Send Heartbeat")
+				logger.Debug("Send Heartbeat")
 				if err = s.Send(&pb.CommandResponse{}); errors.Is(err, io.EOF) {
 					// if stream is disconnected, reconnect
 					select {
@@ -216,7 +214,7 @@ func setupHeartBeat() {
 					default: //
 					}
 				} else if err != nil {
-					utils.LogError(err)
+					logger.Error(err)
 				}
 			} else {
 				select {
@@ -236,7 +234,7 @@ func setupHeartBeat() {
 				continue
 			} else {
 				if err := processCmdStream(s); err != nil {
-					utils.LogError(err)
+					logger.Error(err)
 				}
 			}
 		}
@@ -245,7 +243,7 @@ func setupHeartBeat() {
 
 func processCmdStream(stream pb.Engine_RouteCommandClient) error {
 	in, err := stream.Recv()
-	utils.LogDebug("received cmd:", spew.Sdump(in))
+	logger.Debug("received cmd:", spew.Sdump(in))
 	if err != nil {
 		st, ok := status.FromError(err)
 		if !ok {
@@ -352,13 +350,13 @@ func run() {
 			default:
 				err := RunSingleJob(g.ContextWithToken(ctx), g.credential.OrganizationId)
 				if errors.Is(err, ErrNoJob) {
-					utils.LogWarning("no job")
+					logger.Warning("no job")
 					time.Sleep(time.Second * 60)
 				} else if errors.Is(err, context.Canceled) {
-					utils.LogWarning("job cancelled")
+					logger.Warning("job cancelled")
 				} else if err != nil {
-					utils.LogWarning(err)
-					utils.LogError(err)
+					logger.Warning(err)
+					logger.Error(err)
 					time.Sleep(time.Second * 60)
 				}
 			}
@@ -372,16 +370,10 @@ func run() {
 func cleanup() error {
 	if g.status == STATUS_UNINITIALIZED {
 		// clean up data folder
-		dir, err := utils.GetExecutableDir()
-		if err != nil {
+		if err := os.RemoveAll(g.localDataDir); err != nil {
 			return err
 		}
-		dataDir := filepath.Join(dir, "data")
-		if err := os.RemoveAll(dataDir); err != nil {
-			return err
-		}
-		err = os.MkdirAll(dataDir, os.ModePerm)
-		if err != nil {
+		if err := os.MkdirAll(g.localDataDir, os.ModePerm); err != nil {
 			return err
 		}
 	}
@@ -395,7 +387,7 @@ func cleanup() error {
 }
 
 func setupDump() {
-	if strings.ToLower(os.Getenv("SATH_MODE")) != "docker" {
+	if os.Getenv("SATH_ENV") != "docker" {
 		return
 	}
 	dump()
