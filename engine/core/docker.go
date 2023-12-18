@@ -13,7 +13,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
-	"github.com/sath-run/engine/utils"
+	"github.com/sath-run/engine/engine/logger"
 )
 
 type DockerImageResponse struct {
@@ -155,7 +155,7 @@ func CreateContainer(
 		for _, obj := range cbody.Warnings {
 			msg = append(msg, obj)
 		}
-		utils.LogWarning(msg...)
+		logger.Warning(msg...)
 	}
 	return cbody.ID, nil
 }
@@ -171,14 +171,14 @@ func ExecImage(
 		// in case the original ctx was cancelled
 		c := context.Background()
 		if err := client.ContainerStop(c, containerId, nil); err != nil {
-			utils.LogError(errors.WithStack(err))
+			logger.Error(errors.WithStack(err))
 			return
 		}
 		if err := client.ContainerRemove(c, containerId, types.ContainerRemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
 		}); err != nil {
-			utils.LogError(errors.WithStack(err))
+			logger.Error(errors.WithStack(err))
 			return
 		}
 	}()

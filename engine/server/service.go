@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sath-run/engine/constants"
 	"github.com/sath-run/engine/engine/core"
 )
 
@@ -12,7 +13,7 @@ func StartService(c *gin.Context) {
 	err := core.Start()
 	if errors.Is(err, core.ErrRunning) {
 		c.JSON(http.StatusOK, gin.H{
-			"message": "engine have already been started",
+			"message": "engine is already started",
 		})
 	} else if errors.Is(err, core.ErrStopping) {
 		c.JSON(http.StatusOK, gin.H{
@@ -52,11 +53,11 @@ func GetServiceStatus(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"status":  core.Status(),
-		"version": core.VERSION,
+		"version": constants.Version,
 		"jobs":    jobs,
 	})
 }
 
 func GetVersion(c *gin.Context) {
-	c.String(http.StatusOK, core.VERSION)
+	c.String(http.StatusOK, constants.Version)
 }

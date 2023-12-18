@@ -7,4 +7,4 @@ export SATH_MODE=debug
 export SATH_GRPC=localhost:50051
 
 # run sath-cli, with all args forwarded
-./bin/sath ${@:1:999}
+./build/sath ${@:1:999}

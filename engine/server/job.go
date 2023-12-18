@@ -46,11 +46,7 @@ func getJobStatusFromCore(coreStatus *core.JobStatus) *JobStatus {
 }
 
 func readJobStatusFromLog() ([]*JobStatus, error) {
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return nil, err
-	}
-	logPath := filepath.Join(dir, "log", "jobs.log")
+	logPath := filepath.Join(utils.ExecutableDir, "log", "jobs.log")
 	file, err := os.Open(logPath)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil

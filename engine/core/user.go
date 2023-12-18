@@ -45,10 +45,7 @@ func Login(username string, password string, organization string) error {
 }
 
 func readCredential() *LoginCredential {
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return nil
-	}
+	dir := utils.ExecutableDir
 	filename := filepath.Join(dir, ".sath.credential")
 	bytes, err := os.ReadFile(filename)
 	if err != nil {
@@ -63,10 +60,7 @@ func readCredential() *LoginCredential {
 }
 
 func saveCredential(credential LoginCredential) error {
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return err
-	}
+	dir := utils.ExecutableDir
 	data, err := json.Marshal(credential)
 	if err != nil {
 		return err
@@ -76,10 +70,7 @@ func saveCredential(credential LoginCredential) error {
 }
 
 func Logout() error {
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		return err
-	}
+	dir := utils.ExecutableDir
 	if _, err := os.Stat(filepath.Join(dir, ".user.token")); !os.IsNotExist(err) {
 		if err := os.Remove(filepath.Join(dir, ".user.token")); err != nil {
 			return err

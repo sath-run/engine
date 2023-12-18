@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sath-run/engine/utils"
+	"github.com/sath-run/engine/engine/logger"
 )
 
 func fatal(c *gin.Context, err error) bool {
@@ -13,16 +13,17 @@ func fatal(c *gin.Context, err error) bool {
 	} else if c.Writer.Status() == http.StatusBadRequest {
 		return false
 	} else if c.IsAborted() {
-		utils.LogError(err)
+
+		logger.Error(err)
 		return true
 	} else {
-		utils.LogError(err)
+		logger.Error(err)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return true
 	}
 }
 func Init(file string) {
-	utils.LogDebug("initializing api")
+	logger.Debug("initializing api")
 	r := gin.Default()
 	// r.SetTrustedProxies([]string{"unix"})
 	r.SetTrustedProxies(nil)

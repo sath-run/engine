@@ -4,10 +4,17 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"log"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
+	"github.com/manifoldco/promptui"
+	"github.com/sath-run/engine/cli/request"
+	"github.com/sath-run/engine/constants"
 	"github.com/sath-run/engine/utils"
 	"github.com/spf13/cobra"
 )
@@ -21,20 +28,87 @@ after startuping, sath will automatically accept and run jobs`,
 	Run: runStartup,
 }
 
+func startEngine() {
+	fmt.Println("starting sath engine")
+	var buf bytes.Buffer
+	command := exec.Command(filepath.Join(utils.ExecutableDir, "sath-engine"))
+	command.Stderr = &buf
+	err := command.Start()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	time.Sleep(time.Second)
+	if ok := testSathEnginePing(); ok {
+		log.Println("sath engine successfully started")
+	} else {
+		if pid, _ := findRunningDaemonPid(); pid != 0 {
+			log.Fatalf("fail to ping sath engine: %s", buf.String())
+		} else {
+			log.Fatalf("fail to start sath engine: %s", buf.String())
+		}
+	}
+}
+
+func testSathEnginePing() bool {
+	for i := 0; i < 3; i++ {
+		time.Sleep(time.Second)
+		// ping sath-engine to make sure it is started
+		if request.Ping() {
+			return true
+		} else {
+			continue
+		}
+	}
+
+	return false
+}
+
+func checkIfUpgradeNeeded() (bool, string) {
+	version, err := checkSathLatestVersion()
+	if err != nil {
+		// if fail to get the latest version, just stop here
+		return false, version
+	}
+	if version != constants.Version {
+		prompt := promptui.Prompt{
+			Label:     fmt.Sprintf("A new version of sath (%s) was detected, upgrade now?", version),
+			IsConfirm: true,
+		}
+		var result string
+		for i := 0; i < 3; i++ {
+			result, _ = prompt.Run()
+			result = strings.TrimSpace(result)
+			result = strings.ToLower(result)
+			if result == "y" || result == "n" {
+				break
+			}
+		}
+		if result == "y" {
+			return true, version
+		}
+	}
+	return false, version
+}
+
 func runStartup(cmd *cobra.Command, args []string) {
 	if pid, _ := findRunningDaemonPid(); pid != 0 {
-		fmt.Println("Sath engine is already running")
-		return
+		fmt.Println("Sath engine is running")
+		if !testSathEnginePing() {
+			log.Fatalf("fail to ping sath engine")
+		}
+	} else {
+		if ok, version := checkIfUpgradeNeeded(); ok {
+			if err := upgradeExecutables(); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("your sath version is successfully upgraded to %s\n", version)
+			return
+		} else {
+			startEngine()
+		}
 	}
-	dir, err := utils.GetExecutableDir()
-	if err != nil {
-		panic(err)
-	}
-	command := exec.Command(filepath.Join(dir, "sath-engine"))
-	if err := command.Start(); err != nil {
-		panic(err)
-	}
-	fmt.Println("Sath engine successfully started")
+	request.EnginePost("/services/start", nil)
 }
 
 func init() {

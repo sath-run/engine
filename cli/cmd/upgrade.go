@@ -5,7 +5,15 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"path/filepath"
+	"runtime"
 
+	"github.com/sath-run/engine/cli/request"
+	"github.com/sath-run/engine/constants"
+	"github.com/sath-run/engine/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -22,8 +30,58 @@ to quickly create a Cobra application.`,
 	Run: runUpgrade,
 }
 
+func checkSathLatestVersion() (string, error) {
+	res, err := http.Get(fmt.Sprintf("https://download.sath.run/binaries/%s/%s/VERSION", runtime.GOOS, runtime.GOARCH))
+	if err != nil {
+		return "", fmt.Errorf("fail to get latest version info, %+v", err)
+	}
+	defer res.Body.Close()
+	bytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", fmt.Errorf("fail to read version request body, %+v", err)
+
+	}
+	return string(bytes), nil
+}
+
+func upgradeExecutables() error {
+	var err error
+	fmt.Println("downloading sath-engine")
+	url := fmt.Sprintf("https://download.sath.run/binaries/%s/%s/sath-engine", runtime.GOOS, runtime.GOARCH)
+	err = request.DownloadFile(filepath.Join(utils.ExecutableDir, "sath-engine"), url)
+	if err != nil {
+		return fmt.Errorf("fail to download sath-engine %+v", err)
+	}
+
+	fmt.Println("downloading sath-cli")
+	url = fmt.Sprintf("https://download.sath.run/binaries/%s/%s/sath", runtime.GOOS, runtime.GOARCH)
+	err = request.DownloadFile(filepath.Join(utils.ExecutableDir, "sath"), url)
+	if err != nil {
+		return fmt.Errorf("fail to download sath-cli %+v", err)
+	}
+	return nil
+}
+
 func runUpgrade(cmd *cobra.Command, args []string) {
-	fmt.Println("Chcecking the latest version")
+	if pid, _ := findRunningDaemonPid(); pid != 0 {
+		fmt.Println("Sath engine is still running, please use shutdown it first")
+		return
+	}
+	fmt.Println("Checking the latest version")
+	latest, err := checkSathLatestVersion()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("current version:", constants.Version)
+	fmt.Println("latest available version:", latest)
+	if constants.Version == latest {
+		fmt.Println("your sath version is already the latest")
+		return
+	}
+	if err := upgradeExecutables(); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("your sath version is successfully upgraded to %s\n", latest)
 
 }
 

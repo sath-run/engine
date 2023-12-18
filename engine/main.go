@@ -3,13 +3,13 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sath-run/engine/constants"
 	"github.com/sath-run/engine/engine/core"
+	"github.com/sath-run/engine/engine/logger"
 	"github.com/sath-run/engine/engine/server"
 )
 
@@ -29,8 +29,11 @@ func main() {
 	flag.Parse()
 
 	if showVersion {
-		fmt.Println("Sath " + constants.Version)
-		return
+		log.Fatalln("Sath " + constants.Version)
+	}
+
+	if err := logger.Init(); err != nil {
+		log.Fatalf("fail to init logger, %+v\n", err)
 	}
 
 	sockfile := "/var/run/sath.sock"
@@ -54,21 +57,17 @@ func main() {
 		ssl = true
 	}
 
-	fmt.Println(grpcAddr, ssl)
-	err := core.Init(&core.Config{
+	if err := core.Init(&core.Config{
 		GrpcAddress: grpcAddr,
 		SSL:         ssl,
-		HostDir:     dataPath,
-	})
-	if err != nil {
+		DataDir:     dataPath,
+	}); err != nil {
 		log.Fatal(err)
 	}
 
 	if os.Getenv("SATH_MODE") != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-
-	fmt.Println(os.Getenv("SATH_MODE"))
 
 	// api will block main thread forever
 	server.Init(sockfile)

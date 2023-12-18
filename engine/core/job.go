@@ -13,8 +13,9 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
+	"github.com/sath-run/engine/constants"
 	pb "github.com/sath-run/engine/engine/core/protobuf"
-	"github.com/sath-run/engine/utils"
+	"github.com/sath-run/engine/engine/logger"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -62,36 +63,36 @@ type JobContext struct {
 var jobContext = JobContext{}
 
 func (c *JobContext) Lock() {
-	// utils.LogError(errors.New("Lock"))
+	// logger.Error(errors.New("Lock"))
 	c.mu.Lock()
 }
 
 func (c *JobContext) UnLock() {
-	// utils.LogError(errors.New("UnLock"))
+	// logger.Error(errors.New("UnLock"))
 	c.mu.Unlock()
 }
 
 func (c *JobContext) RLock() {
-	// utils.LogError(errors.New("RLock"))
+	// logger.Error(errors.New("RLock"))
 	c.mu.RLock()
 }
 
 func (c *JobContext) RUnLock() {
-	// utils.LogError(errors.New("RUnLock"))
+	// logger.Error(errors.New("RUnLock"))
 	c.mu.RUnlock()
 }
 
 func (c *JobContext) Pause() {
-	// utils.LogError(errors.New("Pause"))
+	// logger.Error(errors.New("Pause"))
 	<-c.pauseChannel
 }
 
 func (c *JobContext) Resume() {
-	// utils.LogError(errors.New("Resume"))
+	// logger.Error(errors.New("Resume"))
 	select {
 	case c.pauseChannel <- false:
 	default:
-		// utils.LogDebug("Fails to resume")
+		// logger.Debug("Fails to resume")
 	}
 }
 
@@ -167,7 +168,7 @@ func processOutputs(dir string, job *pb.JobGetResponse) ([]*pb.ExecOutput, error
 		path := filepath.Join(outputDir, output.Path)
 		data, err := os.Open(path)
 		if err != nil {
-			utils.LogDebug("file not found:", path)
+			logger.Debug("file not found:", path)
 			continue
 		}
 		defer data.Close()
@@ -216,7 +217,7 @@ func processOutputs(dir string, job *pb.JobGetResponse) ([]*pb.ExecOutput, error
 
 func RunSingleJob(ctx context.Context, orgId string) error {
 	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{
-		Version:        VERSION,
+		Version:        constants.Version,
 		OrganizationId: orgId,
 	})
 
@@ -246,7 +247,7 @@ func RunSingleJob(ctx context.Context, orgId string) error {
 	status.CompletedAt = time.Now()
 	status.Outputs = outputs
 	if err != nil {
-		utils.LogError(err)
+		logger.Error(err)
 		if errors.Is(err, context.Canceled) {
 			status.Status = pb.EnumExecStatus_EES_CANCELED
 			status.Message = "user canceled"
@@ -282,7 +283,7 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) ([]*p
 	status.Status = pb.EnumExecStatus_EES_STARTED
 	populateJobStatus(status)
 
-	utils.LogDebug("RunJob: ", job)
+	logger.Debug("RunJob: ", job)
 
 	dir, err := os.MkdirTemp(g.localDataDir, "sath_tmp_*")
 	if err != nil {
@@ -290,7 +291,7 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) ([]*p
 	}
 	defer func() {
 		if err := os.RemoveAll(dir); err != nil {
-			utils.LogError(err)
+			logger.Error(err)
 		}
 	}()
 
@@ -488,7 +489,7 @@ func Pause(execId string) bool {
 	}
 	if !jobContext.status.Paused && jobContext.status.Status == pb.EnumExecStatus_EES_RUNNING && len(jobContext.status.ContainerId) > 0 {
 		if err := g.dockerClient.ContainerPause(context.TODO(), jobContext.status.ContainerId); err != nil {
-			utils.LogError(err)
+			logger.Error(err)
 		}
 	}
 
@@ -514,7 +515,7 @@ func Resume(execId string) bool {
 		jobContext.status.Status == pb.EnumExecStatus_EES_RUNNING &&
 		len(jobContext.status.ContainerId) > 0 {
 		if err := g.dockerClient.ContainerUnpause(context.TODO(), jobContext.status.ContainerId); err != nil {
-			utils.LogError(err)
+			logger.Error(err)
 		}
 	}
 	jobContext.Resume()

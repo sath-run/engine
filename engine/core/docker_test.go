@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
@@ -18,7 +17,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/google/shlex"
 	"github.com/sath-run/engine/engine/core"
-	"github.com/sath-run/engine/utils"
+	"github.com/sath-run/engine/engine/logger"
 )
 
 func TestDockerPull(t *testing.T) {
@@ -40,11 +39,11 @@ func TestDockerPull(t *testing.T) {
 		if err := json.Unmarshal([]byte(text), &obj); err != nil {
 			panic(err)
 		}
-		log.Println(obj)
+		fmt.Println(obj)
 	})
 
 	if err != nil {
-		log.Printf("%+v\n", err)
+		fmt.Printf("%+v\n", err)
 		panic(err)
 	}
 }
@@ -78,7 +77,7 @@ func TestDockerGPU(t *testing.T) {
 		for _, obj := range cbody.Warnings {
 			msg = append(msg, obj)
 		}
-		utils.LogWarning(msg...)
+		logger.Warning(msg...)
 	}
 	fmt.Println(cbody.ID)
 
