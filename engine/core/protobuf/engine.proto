@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+option go_package = "github.com/sath-run/engine/engine/core/protobuf";
+
+package protobuf;
+
+import "job.proto";
+import "sys.proto";
+
+service engine {
+  rpc HandShake(HandShakeRequest) returns (HandShakeResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc GetNewJob(JobGetRequest) returns (JobGetResponse);
+  rpc NotifyExecStatus(stream ExecNotificationRequest) returns (ExecNotificationResponse);
+  rpc RouteCommand(stream CommandResponse) returns (stream CommandRequest);
+}
+
+message HandShakeRequest {
+  SystemInfo system_info = 1;
+}
+
+message HandShakeResponse {
+  string token = 1;
+  string user_id = 2;
+  string device_id = 3;
+}
+
+message LoginRequest {
+  string password = 1;
+  string account = 2;
+  string organization = 3;
+}
+
+message LoginResponse {
+  string token = 1;
+  string user_id = 2;
+  string device_id = 3;
+  string organization_id = 4;
+}
+
+enum EnumCommand {
+  EC_UNSPECIFIED = 0;
+  EC_PAUSE = 1;
+  EC_RESUME = 2;
+}
+
+message CommandRequest {
+  string id = 1;
+  EnumCommand command = 2;
+  map<string, string> data = 3; 
+}
+
+enum EnumCommandStatus {
+  ECS_OK = 0;
+  ECS_NOT_IMPLEMENTED = 1;
+  ECS_INVALID_STATE = 2;
+}
+
+message CommandResponse {
+  string id = 1;
+  EnumCommand command = 2;
+  EnumCommandStatus status = 3;
+  map<string, string> data = 4; 
+}
