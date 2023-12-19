@@ -12,9 +12,24 @@ import (
 	"net/http"
 	"os"
 	"syscall"
+	"time"
 )
 
 var Origin string = "http://unix"
+
+func PingSathEngine() bool {
+	for i := 0; i < 3; i++ {
+		time.Sleep(time.Second)
+		// ping sath-engine to make sure it is started
+		if Ping() {
+			return true
+		} else {
+			continue
+		}
+	}
+
+	return false
+}
 
 func sendRequestToEngine(method string, path string, data map[string]interface{}) (map[string]interface{}, int, error) {
 	url := Origin + path
@@ -36,9 +51,14 @@ func sendRequestToEngine(method string, path string, data map[string]interface{}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if errors.Is(err, syscall.ECONNREFUSED) {
-		fmt.Println("SATH engine is not running.")
-		fmt.Println("If sath-engine is installed, run the following command to start:")
-		fmt.Println("  sudo systemctl start sath")
+		if pid, _ := FindRunningDaemonPid(); pid == 0 {
+			fmt.Println("sath-engine is not started")
+			fmt.Println("  use `sath startup` to start it")
+		} else {
+			fmt.Printf("sath-engine is running at process %d\n", pid)
+			fmt.Println("can not connect sath-engine")
+			fmt.Println("  use `sath restart` to restart it")
+		}
 		os.Exit(1)
 	} else if err != nil {
 		return nil, 0, err

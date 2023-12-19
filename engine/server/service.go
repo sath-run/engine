@@ -10,6 +10,11 @@ import (
 )
 
 func StartService(c *gin.Context) {
+	if core.GetUserInfo() == nil {
+		// login is required
+		c.AbortWithStatusJSON(http.StatusUnauthorized, "login is required")
+		return
+	}
 	err := core.Start()
 	if errors.Is(err, core.ErrRunning) {
 		c.JSON(http.StatusOK, gin.H{

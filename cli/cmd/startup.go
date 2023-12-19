@@ -39,29 +39,15 @@ func startEngine() {
 		log.Fatal(err)
 	}
 	time.Sleep(time.Second)
-	if ok := testSathEnginePing(); ok {
+	if ok := request.PingSathEngine(); ok {
 		log.Println("sath engine successfully started")
 	} else {
-		if pid, _ := findRunningDaemonPid(); pid != 0 {
+		if pid, _ := request.FindRunningDaemonPid(); pid != 0 {
 			log.Fatalf("fail to ping sath engine: %s", buf.String())
 		} else {
 			log.Fatalf("fail to start sath engine: %s", buf.String())
 		}
 	}
-}
-
-func testSathEnginePing() bool {
-	for i := 0; i < 3; i++ {
-		time.Sleep(time.Second)
-		// ping sath-engine to make sure it is started
-		if request.Ping() {
-			return true
-		} else {
-			continue
-		}
-	}
-
-	return false
 }
 
 func checkIfUpgradeNeeded() (bool, string) {
@@ -92,9 +78,9 @@ func checkIfUpgradeNeeded() (bool, string) {
 }
 
 func runStartup(cmd *cobra.Command, args []string) {
-	if pid, _ := findRunningDaemonPid(); pid != 0 {
+	if pid, _ := request.FindRunningDaemonPid(); pid != 0 {
 		fmt.Println("Sath engine is running")
-		if !testSathEnginePing() {
+		if !request.PingSathEngine() {
 			log.Fatalf("fail to ping sath engine")
 		}
 	} else {
@@ -108,7 +94,6 @@ func runStartup(cmd *cobra.Command, args []string) {
 			startEngine()
 		}
 	}
-	request.EnginePost("/services/start", nil)
 }
 
 func init() {

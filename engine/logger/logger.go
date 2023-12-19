@@ -13,6 +13,7 @@ import (
 
 var jobLogger *lumberjack.Logger
 var errLogger *lumberjack.Logger
+var stdLogger *lumberjack.Logger
 
 func Init() error {
 	loggerDir := filepath.Join(utils.ExecutableDir, "/log")
@@ -27,7 +28,14 @@ func Init() error {
 		Compress:   false, // disabled by default
 	}
 	errLogger = &lumberjack.Logger{
-		Filename:   filepath.Join(loggerDir, "jobs.log"),
+		Filename:   filepath.Join(loggerDir, "err.log"),
+		MaxSize:    20,    // megabytes
+		MaxBackups: 3,     //
+		MaxAge:     28,    //days
+		Compress:   false, // disabled by default
+	}
+	stdLogger = &lumberjack.Logger{
+		Filename:   filepath.Join(loggerDir, "out.log"),
 		MaxSize:    20,    // megabytes
 		MaxBackups: 3,     //
 		MaxAge:     28,    //days
@@ -55,7 +63,7 @@ func Debug(a ...any) {
 			time.Now().Format("2006/01/02 - 15:04:05"),
 			" | ")
 		messages = append(messages, a...)
-		fmt.Println(messages...)
+		stdLogger.Write([]byte(fmt.Sprintln(messages...)))
 	}
 }
 
@@ -66,7 +74,7 @@ func Warning(a ...any) {
 		time.Now().Format("2006/01/02 - 15:04:05"),
 		" | ")
 	messages = append(messages, a...)
-	fmt.Println(messages...)
+	stdLogger.Write([]byte(fmt.Sprintln(messages...)))
 }
 
 func LogJob(content []byte) {

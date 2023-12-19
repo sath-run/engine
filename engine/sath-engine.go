@@ -11,6 +11,7 @@ import (
 	"github.com/sath-run/engine/engine/core"
 	"github.com/sath-run/engine/engine/logger"
 	"github.com/sath-run/engine/engine/server"
+	"github.com/sath-run/engine/meta"
 )
 
 var dataPath string
@@ -34,6 +35,10 @@ func main() {
 
 	if err := logger.Init(); err != nil {
 		log.Fatalf("fail to init logger, %+v\n", err)
+	}
+
+	if err := meta.Init(); err != nil {
+		log.Fatalf("fail to init DB, %+v\n", err)
 	}
 
 	sockfile := "/var/run/sath.sock"

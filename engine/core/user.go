@@ -2,89 +2,61 @@ package core
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
 
 	pb "github.com/sath-run/engine/engine/core/protobuf"
-	"github.com/sath-run/engine/utils"
+	"github.com/sath-run/engine/meta"
 )
 
-type LoginCredential struct {
-	UserId         string
-	DeviceId       string
-	Token          string
-	Username       string
-	Organization   string
-	OrganizationId string
+type UserInfo struct {
+	Id    string
+	Name  string
+	Email string
 }
 
-func Login(username string, password string, organization string) error {
+func userLogin(username string, password string) error {
 	ctx := g.ContextWithToken(context.TODO())
 	res, err := g.grpcClient.Login(ctx, &pb.LoginRequest{
-		Account:      username,
-		Password:     password,
-		Organization: organization,
+		Account:  username,
+		Password: password,
 	})
 	if err != nil {
 		return err
 	}
-	credential := LoginCredential{
-		Username:       username,
-		Organization:   organization,
-		UserId:         res.UserId,
-		DeviceId:       res.DeviceId,
-		Token:          res.Token,
-		OrganizationId: res.OrganizationId,
+	g.userInfo = &UserInfo{
+		Name:  res.UserName,
+		Email: res.UserEmail,
+		Id:    res.UserId,
 	}
-	if err := saveCredential(credential); err != nil {
+	g.userToken = res.Token
+	if err := meta.SetCredentialUserToken(g.userToken); err != nil {
+		return err
+	}
+	return nil
+}
+
+func Login(username string, password string) error {
+	err := userLogin(username, password)
+	if err != nil {
 		return err
 	}
 	g.heartbeatResetChan <- true
 	return nil
 }
 
-func readCredential() *LoginCredential {
-	dir := utils.ExecutableDir
-	filename := filepath.Join(dir, ".sath.credential")
-	bytes, err := os.ReadFile(filename)
-	if err != nil {
-		return nil
-	}
-	credential := LoginCredential{}
-	if err := json.Unmarshal(bytes, &credential); err != nil {
-		os.Remove(filename)
-		return nil
-	}
-	return &credential
-}
+func Logout() error {
 
-func saveCredential(credential LoginCredential) error {
-	dir := utils.ExecutableDir
-	data, err := json.Marshal(credential)
+	// clear user token on DB
+	err := meta.SetCredentialUserToken("")
 	if err != nil {
 		return err
 	}
-	g.credential = credential
-	return os.WriteFile(filepath.Join(dir, ".sath.credential"), data, 0666)
-}
 
-func Logout() error {
-	dir := utils.ExecutableDir
-	if _, err := os.Stat(filepath.Join(dir, ".user.token")); !os.IsNotExist(err) {
-		if err := os.Remove(filepath.Join(dir, ".user.token")); err != nil {
-			return err
-		}
-	}
-
-	// bytes, err := os.ReadFile(filepath.Join(dir, ".device.token"))
-	// if err != nil {
-	// 	return err
-	// }
-	// g.token = string(bytes)
+	// clear user info in g
+	g.userToken = ""
+	g.userInfo = nil
 	return nil
 }
 
-func Credential() LoginCredential {
-	return g.credential
+func GetUserInfo() *UserInfo {
+	return g.userInfo
 }
