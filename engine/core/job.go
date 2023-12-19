@@ -13,14 +13,14 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
-	"github.com/sath-run/engine/constants"
 	pb "github.com/sath-run/engine/engine/core/protobuf"
 	"github.com/sath-run/engine/engine/logger"
 	"google.golang.org/grpc/metadata"
 )
 
 var (
-	ErrNoJob = errors.New("No job")
+	ErrUnautherized = errors.New("Unautherized")
+	ErrNoJob        = errors.New("No job")
 )
 
 func JobStatusText(enum pb.EnumExecStatus) string {
@@ -215,11 +215,8 @@ func processOutputs(dir string, job *pb.JobGetResponse) ([]*pb.ExecOutput, error
 	return outputs, nil
 }
 
-func RunSingleJob(ctx context.Context, orgId string) error {
-	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{
-		Version:        constants.Version,
-		OrganizationId: orgId,
-	})
+func RunSingleJob(ctx context.Context) error {
+	job, err := g.grpcClient.GetNewJob(ctx, &pb.JobGetRequest{})
 
 	if err != nil {
 		return err

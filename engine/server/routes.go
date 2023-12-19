@@ -43,7 +43,7 @@ func Init(file string) {
 	r.POST("/jobs/resume", ResumeJob)
 	r.POST("/users/login", Login)
 	r.POST("/users/logout", Logout)
-	r.GET("/users/credential", GetCredential)
+	r.GET("/users/info", GetUserInfo)
 
 	if err := r.RunUnix(file); err != nil {
 		panic(err)

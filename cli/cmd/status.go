@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/sath-run/engine/cli/request"
+	"github.com/sath-run/engine/constants"
 	"github.com/spf13/cobra"
 )
 
@@ -19,16 +20,15 @@ var statusCmd = &cobra.Command{
 }
 
 func printStatusResult(result map[string]interface{}) {
-	fmt.Println("SATH Version:", result["version"])
 	var status string = result["status"].(string)
 	switch status {
 	case "WAITING":
-		fmt.Println("SATH Engine is waiting")
-		fmt.Println("  use: `sath start` to start it")
+		fmt.Println("sath-engine is waiting")
+		fmt.Println("  use `sath run` to run jobs")
 	case "UNINITIALIZED", "STARTING":
-		fmt.Println("SATH Engine is starting, it may take a few seconds")
+		fmt.Println("sath-engine is starting, it may take a few seconds")
 	case "RUNNING":
-		fmt.Println("SATH Engine is running")
+		fmt.Println("sath-engine is running")
 		if jobs, ok := result["jobs"].([]interface{}); ok {
 			fmt.Println("Current running jobs:")
 			fmt.Println("*****************************************")
@@ -38,27 +38,30 @@ func printStatusResult(result map[string]interface{}) {
 				}
 			}
 			fmt.Println("*****************************************")
-			fmt.Println("Use: `sath jobs` to view detail of jobs")
+			fmt.Println("  use `sath jobs` to view detail of jobs")
 		} else {
 			fmt.Println("No job is accpeted yet")
 		}
 	default:
 		fmt.Println("unknown status, please contact service@sath.run for support")
 	}
-	// if result == nil {
-	// 	fmt.Println("no job is running")
-	// } else {
-	// 	fmt.Printf("id: %s\n", result["id"])
-	// 	fmt.Printf("status: %s\n", result["status"])
-	// 	fmt.Printf("progress: %f\n", result["progress"])
-	// 	fmt.Printf("message: %s\n", result["message"])
-	// 	fmt.Println()
-	// }
 }
 
 func runStatus(cmd *cobra.Command, args []string) {
-	result := request.EngineGet("/services/status")
-	printStatusResult(result)
+	fmt.Println("sath version:", constants.Version)
+	user := request.EngineGet("/users/info")
+	if email, ok := user["email"].(string); ok && len(email) > 0 {
+		fmt.Println("*****************************************")
+		fmt.Println("sath-engine is logged in by user:")
+		fmt.Println("email:", email)
+		fmt.Println("name: ", user["name"])
+		fmt.Println("*****************************************")
+	} else {
+		fmt.Println("no user is logged in")
+		fmt.Println("  use `sath login` to login your account")
+	}
+	status := request.EngineGet("/services/status")
+	printStatusResult(status)
 }
 
 func init() {

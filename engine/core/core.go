@@ -20,6 +20,7 @@ import (
 	"github.com/sath-run/engine/constants"
 	pb "github.com/sath-run/engine/engine/core/protobuf"
 	"github.com/sath-run/engine/engine/logger"
+	"github.com/sath-run/engine/meta"
 	"github.com/sath-run/engine/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -50,7 +51,10 @@ type Global struct {
 	dumpDone           chan bool
 	heartbeatResetChan chan bool
 
-	credential   LoginCredential
+	userToken    string
+	deviceToken  string
+	deviceId     string
+	userInfo     *UserInfo
 	grpcConn     *grpc.ClientConn
 	grpcClient   pb.EngineClient
 	dockerClient *client.Client
@@ -74,8 +78,14 @@ type Config struct {
 }
 
 func (g *Global) ContextWithToken(ctx context.Context) context.Context {
+	var token string
+	if g.userToken != "" {
+		token = g.userToken
+	} else {
+		token = g.deviceToken
+	}
 	return metadata.AppendToOutgoingContext(ctx,
-		"authorization", g.credential.Token,
+		"authorization", token,
 		"version", constants.Version)
 }
 
@@ -130,28 +140,35 @@ func Init(config *Config) error {
 
 	g.dockerClient, err = client.NewClientWithOpts(client.FromEnv)
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
 
-	if cred := readCredential(); cred != nil {
-		g.credential = *cred
+	deviceToken, err := meta.GetCredentialDeviceToken()
+	if err == nil {
+		g.deviceToken = deviceToken
+	} else if !constants.IsErrNil(err) {
+		return err
 	}
-
 	resp, err := g.grpcClient.HandShake(g.ContextWithToken(context.TODO()), &pb.HandShakeRequest{
 		SystemInfo: GetSystemInfo(),
 	})
 	if err != nil {
-		return errors.WithStack(err)
+		return err
 	}
-	if len(resp.Token) == 0 {
-		return errors.New("handshake did not get token")
-	} else if g.credential.Token != resp.Token {
-		g.credential.DeviceId = resp.DeviceId
-		g.credential.Token = resp.Token
-		g.credential.UserId = resp.UserId
-		if err := saveCredential(g.credential); err != nil {
-			return err
-		}
+	g.deviceToken = resp.Token
+	g.deviceId = resp.DeviceId
+	if err := meta.SetCredentialDeviceToken(g.deviceToken); err != nil {
+		return err
+	}
+
+	userToken, err := meta.GetCredentialUserToken()
+	if err != nil && !constants.IsErrNil(err) {
+		return err
+	}
+	if len(userToken) > 0 {
+		// refresh login data using userToken
+		g.userToken = userToken
+		userLogin("", "")
 	}
 
 	g.localDataDir = filepath.Join(utils.ExecutableDir, "/data")
@@ -169,7 +186,9 @@ func Init(config *Config) error {
 	if err := StopCurrentRunningContainers(g.dockerClient); err != nil {
 		panic(err)
 	}
-	cleanup()
+	if err := cleanup(); err != nil {
+		panic(err)
+	}
 	setupHeartBeat()
 	setupDump()
 
@@ -348,7 +367,7 @@ func run() {
 					log.Printf("%+v\n", err)
 				}
 			default:
-				err := RunSingleJob(g.ContextWithToken(ctx), g.credential.OrganizationId)
+				err := RunSingleJob(g.ContextWithToken(ctx))
 				if errors.Is(err, ErrNoJob) {
 					logger.Warning("no job")
 					time.Sleep(time.Second * 60)

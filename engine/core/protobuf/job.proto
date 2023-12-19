@@ -18,10 +18,6 @@ enum EnumExecStatus {
 }
 
 message JobGetRequest {
-  string version = 1;
-  string project_id = 2;
-  string organization_id = 3;
-  string user_id = 4;
 }
 
 enum GpuOpt {

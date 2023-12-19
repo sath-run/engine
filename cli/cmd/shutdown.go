@@ -4,12 +4,8 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
-	"strings"
 
 	"github.com/sath-run/engine/cli/request"
 	"github.com/spf13/cobra"
@@ -25,24 +21,10 @@ and will no longer start new jobs`,
 	Run: runShutdown,
 }
 
-func findRunningDaemonPid() (pid int, err error) {
-	command := exec.Command("bash", "-c", "ps | grep sath-engine | grep -v grep")
-	res, err := command.Output()
-	if err != nil {
-		err = errors.New("cannot find the running pid of sath")
-		return
-	}
-	pid, err = strconv.Atoi(strings.Fields(string(res))[0])
-	if err != nil {
-		return
-	}
-	return
-}
-
 func runShutdown(cmd *cobra.Command, args []string) {
 	resp := request.EnginePost("/services/stop", map[string]interface{}{"wait": true})
 	fmt.Println(resp["message"])
-	pid, err := findRunningDaemonPid()
+	pid, err := request.FindRunningDaemonPid()
 	if err != nil {
 		fmt.Println(err)
 		return

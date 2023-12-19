@@ -21,21 +21,19 @@ message HandShakeRequest {
 
 message HandShakeResponse {
   string token = 1;
-  string user_id = 2;
-  string device_id = 3;
+  string device_id = 2;
 }
 
 message LoginRequest {
-  string password = 1;
-  string account = 2;
-  string organization = 3;
+  string account = 1;
+  string password = 2;
 }
 
 message LoginResponse {
   string token = 1;
   string user_id = 2;
-  string device_id = 3;
-  string organization_id = 4;
+  string user_name = 3;
+  string user_email = 4;
 }
 
 enum EnumCommand {

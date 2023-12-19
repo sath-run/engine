@@ -11,14 +11,13 @@ import (
 
 func Login(c *gin.Context) {
 	var form struct {
-		Username     string `binding:"required"`
-		Password     string `binding:"required"`
-		Organization string ``
+		Username string `binding:"required"`
+		Password string `binding:"required"`
 	}
 	if err := c.Bind(&form); fatal(c, err) {
 		return
 	}
-	if err := core.Login(form.Username, form.Password, form.Organization); err != nil {
+	if err := core.Login(form.Username, form.Password); err != nil {
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.InvalidArgument {
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -37,12 +36,16 @@ func Login(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-func GetCredential(c *gin.Context) {
-	credential := core.Credential()
-	c.JSON(http.StatusOK, gin.H{
-		"username":     credential.Username,
-		"organization": credential.Organization,
-	})
+func GetUserInfo(c *gin.Context) {
+	info := core.GetUserInfo()
+	if info == nil {
+		c.JSON(http.StatusOK, gin.H{})
+	} else {
+		c.JSON(http.StatusOK, gin.H{
+			"email": info.Email,
+			"name":  info.Name,
+		})
+	}
 }
 
 func Logout(c *gin.Context) {

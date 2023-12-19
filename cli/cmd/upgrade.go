@@ -63,7 +63,7 @@ func upgradeExecutables() error {
 }
 
 func runUpgrade(cmd *cobra.Command, args []string) {
-	if pid, _ := findRunningDaemonPid(); pid != 0 {
+	if pid, _ := request.FindRunningDaemonPid(); pid != 0 {
 		fmt.Println("Sath engine is still running, please use shutdown it first")
 		return
 	}
