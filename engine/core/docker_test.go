@@ -9,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
+	"github.com/distribution/reference"
 	"github.com/docker/cli/opts"
-	"github.com/docker/distribution/reference"
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/google/shlex"
 	"github.com/sath-run/engine/engine/core"
@@ -24,7 +25,7 @@ func TestDockerPull(t *testing.T) {
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	checkErr(err)
 
-	authConfig := types.AuthConfig{
+	authConfig := registry.AuthConfig{
 		Username: "username",
 		Password: "password",
 	}
@@ -32,7 +33,7 @@ func TestDockerPull(t *testing.T) {
 	checkErr(err)
 	authStr := base64.URLEncoding.EncodeToString(encodedJSON)
 	ctx := context.Background()
-	err = core.PullImage(ctx, dockerClient, "zengxinzhy/vina", types.ImagePullOptions{
+	err = core.PullImage(ctx, dockerClient, "zengxinzhy/vina", image.PullOptions{
 		RegistryAuth: authStr,
 	}, func(text string) {
 		var obj map[string]any
@@ -81,11 +82,11 @@ func TestDockerGPU(t *testing.T) {
 	}
 	fmt.Println(cbody.ID)
 
-	if err := dockerClient.ContainerStart(ctx, cbody.ID, types.ContainerStartOptions{}); err != nil {
+	if err := dockerClient.ContainerStart(ctx, cbody.ID, container.StartOptions{}); err != nil {
 		panic(err)
 	}
 
-	out, err := dockerClient.ContainerLogs(ctx, cbody.ID, types.ContainerLogsOptions{
+	out, err := dockerClient.ContainerLogs(ctx, cbody.ID, container.LogsOptions{
 		ShowStdout: true,
 		Follow:     true,
 		Details:    true,
@@ -143,7 +144,7 @@ func TestContainerList(t *testing.T) {
 	}
 
 	filter := filters.NewArgs(filters.Arg("label", "run.sath.starter"))
-	containers, err := dockerClient.ContainerList(ctx, types.ContainerListOptions{
+	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{
 		Filters: filter,
 	})
 	if err != nil {

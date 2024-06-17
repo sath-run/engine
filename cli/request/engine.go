@@ -43,7 +43,7 @@ func sendRequestToEngine(method string, path string, data map[string]interface{}
 	client := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", "/var/run/sath.sock")
+				return net.Dial("unix", "/var/run/sath/engine.sock")
 			},
 		},
 	}

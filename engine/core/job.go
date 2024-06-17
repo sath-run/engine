@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/distribution/reference"
-	"github.com/docker/docker/api/types"
+	"github.com/distribution/reference"
+	"github.com/docker/docker/api/types/image"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/pkg/errors"
 	pb "github.com/sath-run/engine/engine/core/protobuf"
@@ -140,9 +140,7 @@ func processInputs(dir string, job *pb.JobGetResponse, status JobStatus) error {
 				return err
 			}
 			defer resp.Body.Close()
-			if err != nil {
-				return err
-			}
+
 			_, err = io.Copy(out, resp.Body)
 			if err != nil {
 				return err
@@ -309,7 +307,7 @@ func RunJob(ctx context.Context, job *pb.JobGetResponse, status JobStatus) ([]*p
 		hostDir = filepath.Join(g.hostDataDir, tmpDirName)
 	}
 
-	if err = PullImage(ctx, g.dockerClient, job.Image.Url, types.ImagePullOptions{
+	if err = PullImage(ctx, g.dockerClient, job.Image.Url, image.PullOptions{
 		RegistryAuth: job.Image.Auth,
 	}, func(text string) {
 		status.Status = pb.EnumExecStatus_EES_PULLING_IMAGE

@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/docker/cli/opts"
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/engine/logger"
@@ -64,7 +64,7 @@ func (config *DockerImageConfig) Image() string {
 	return image
 }
 
-func PullImage(ctx context.Context, dockerClient *client.Client, url string, options types.ImagePullOptions, onProgress func(text string)) error {
+func PullImage(ctx context.Context, dockerClient *client.Client, url string, options image.PullOptions, onProgress func(text string)) error {
 	// look for local images to see if any mathces given id
 	// images, err := dockerClient.ImageList(ctx, types.ImageListOptions{})
 	// if err != nil {
@@ -170,11 +170,11 @@ func ExecImage(
 		// assign a new background to ctx to make sure the following code still works
 		// in case the original ctx was cancelled
 		c := context.Background()
-		if err := client.ContainerStop(c, containerId, nil); err != nil {
+		if err := client.ContainerStop(c, containerId, container.StopOptions{}); err != nil {
 			logger.Error(errors.WithStack(err))
 			return
 		}
-		if err := client.ContainerRemove(c, containerId, types.ContainerRemoveOptions{
+		if err := client.ContainerRemove(c, containerId, container.RemoveOptions{
 			RemoveVolumes: true,
 			Force:         true,
 		}); err != nil {
@@ -183,11 +183,11 @@ func ExecImage(
 		}
 	}()
 
-	if err := client.ContainerStart(ctx, containerId, types.ContainerStartOptions{}); err != nil {
+	if err := client.ContainerStart(ctx, containerId, container.StartOptions{}); err != nil {
 		return err
 	}
 
-	out, err := client.ContainerLogs(ctx, containerId, types.ContainerLogsOptions{
+	out, err := client.ContainerLogs(ctx, containerId, container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
@@ -215,14 +215,14 @@ func ExecImage(
 func StopCurrentRunningContainers(client *client.Client) error {
 	ctx := context.Background()
 	filter := filters.NewArgs(filters.Arg("label", "run.sath.starter"))
-	containers, err := client.ContainerList(ctx, types.ContainerListOptions{
+	containers, err := client.ContainerList(ctx, container.ListOptions{
 		Filters: filter,
 	})
 	if err != nil {
 		return err
 	}
 	for _, c := range containers {
-		if err := client.ContainerStop(ctx, c.ID, nil); err != nil {
+		if err := client.ContainerStop(ctx, c.ID, container.StopOptions{}); err != nil {
 			return err
 		}
 	}

@@ -41,7 +41,7 @@ func main() {
 		log.Fatalf("fail to init DB, %+v\n", err)
 	}
 
-	sockfile := "/var/run/sath.sock"
+	sockfile := "/var/run/sath/engine.sock"
 
 	// 若sockfile已存在则删除
 	if err := os.Remove(sockfile); err != nil && !errors.Is(err, os.ErrNotExist) {
