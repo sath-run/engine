@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/google/shlex"
+	"github.com/pkg/errors"
 	"github.com/sath-run/engine/engine/core"
 	"github.com/sath-run/engine/engine/logger"
 )
@@ -259,4 +261,52 @@ func TestCmd(t *testing.T) {
 		fmt.Println(line)
 	})
 	checkErr(err)
+}
+
+func TestDockerAttach(t *testing.T) {
+	ctx := context.Background()
+	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	checkErr(err)
+	containerId, err := core.CreateContainer(ctx, dockerClient, nil, "sathrun/base", "", "cmd_test", []string{"/tmp/data:/data"})
+	// err = dockerClient.ContainerStart(ctx, containerId, container.StartOptions{})
+	checkErr(err)
+
+	defer func() {
+		// assign a new background to ctx to make sure the following code still works
+		// in case the original ctx was cancelled
+		c := context.Background()
+		if err := dockerClient.ContainerStop(c, containerId, container.StopOptions{}); err != nil {
+			logger.Error(errors.WithStack(err))
+			return
+		}
+		if err := dockerClient.ContainerRemove(c, containerId, container.RemoveOptions{
+			RemoveVolumes: true,
+			Force:         true,
+		}); err != nil {
+			logger.Error(errors.WithStack(err))
+			return
+		}
+	}()
+
+	err = dockerClient.ContainerStart(ctx, containerId, container.StartOptions{})
+	checkErr(err)
+	res, err := dockerClient.ContainerExecCreate(ctx, containerId, container.ExecOptions{
+		AttachStderr: true,
+		AttachStdout: true,
+		Cmd:          []string{"echo", "Hi Tian"},
+	})
+	checkErr(err)
+
+	hijack, err := dockerClient.ContainerExecAttach(ctx, res.ID, container.ExecStartOptions{
+		Tty: true,
+	})
+	checkErr(err)
+	err = dockerClient.ContainerExecStart(ctx, res.ID, container.ExecStartOptions{})
+	checkErr(err)
+
+	defer hijack.Close()
+	scanner := bufio.NewScanner(hijack.Reader)
+	for scanner.Scan() {
+		fmt.Println(scanner.Text())
+	}
 }

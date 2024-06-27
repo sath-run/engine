@@ -4,17 +4,18 @@ option go_package = "github.com/sath-run/engine/engine/core/protobuf";
 
 enum EnumExecStatus {
   EES_UNSPECIFIED = 0;
-	EES_STARTED = 10;
-	EES_PULLING_IMAGE = 20;
-  EES_DOWNLOADING_INPUTS = 30;
-  EES_PROCESSING_INPUTS = 40; 
-  EES_RUNNING = 50;
-  EES_PROCESSING_OUPUTS = 60;
-  EES_UPLOADING_OUTPUTS = 70;
-	EES_SUCCESS = 80;
-	EES_CANCELED = 90;
-	EES_ERROR = 100;
-  EES_PAUSED = 110;
+	EES_DEFAULT = 100;
+  EES_DOWNLOADING_INPUTS = 200;
+  EES_PROCESSING_INPUTS = 300;
+  EES_WAITING = 400;
+	EES_PULLING_IMAGE = 500;
+  EES_INIT_CONTAINER = 600;
+  EES_RUNNING = 700;
+  EES_PROCESSING_OUPUTS = 800;
+	EES_SUCCESS = 900;
+	EES_CANCELED = 1000;
+	EES_ERROR = 1100;
+  EES_PAUSED = 1200;
 }
 
 message JobGetRequest {
@@ -26,12 +27,24 @@ enum GpuOpt {
   EGO_REQUIRED = 100;
 }
 
+enum GpuModel {
+  EGM_All = 0;
+  EGM_NVIDIA = 1;
+  EGM_AMD = 2;
+}
+
+message GpuConf {
+  GpuOpt opt = 1;
+  uint64 vram = 2;
+  repeated GpuModel model = 3;
+}
+
 message JobGetResponse {
   string project_id = 1;
   string job_id = 2;
   string exec_id = 3;
   Image image = 4;
-  GpuOpt gpu_opt = 5;
+  GpuConf gpuConf = 5;
   Volume volume = 6;
   repeated string cmd = 7;
   repeated JobInput inputs = 8;
@@ -78,7 +91,7 @@ message Image {
 message ExecNotificationRequest {
   EnumExecStatus status = 1;
   string message = 2;
-  float progress = 3;
+  double progress = 3;
   repeated GpuStats gpu_stats = 4;
   repeated ExecOutput outputs = 5;
 }
