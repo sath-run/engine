@@ -11,18 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
-	"github.com/sath-run/engine/constants"
 	pb "github.com/sath-run/engine/engine/core/protobuf"
 	"github.com/sath-run/engine/engine/logger"
-	"github.com/sath-run/engine/meta"
 	"github.com/sath-run/engine/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
 
 const (
@@ -42,15 +40,11 @@ var (
 type Core struct {
 	mu                 sync.RWMutex
 	status             int
-	serviceDone        chan bool
 	dumpDone           chan bool
 	heartbeatResetChan chan bool
 
-	userToken   string
-	deviceToken string
-	deviceId    string
-	userInfo    *UserInfo
-	grpcClient  pb.EngineClient
+	user       *User
+	grpcClient pb.EngineClient
 
 	cancelFunc   context.CancelFunc
 	hostDataDir  string
@@ -64,18 +58,6 @@ type Config struct {
 	GrpcAddress string
 	SSL         bool
 	DataDir     string
-}
-
-func (core *Core) ContextWithToken(ctx context.Context) context.Context {
-	var token string
-	if core.userToken != "" {
-		token = core.userToken
-	} else {
-		token = core.deviceToken
-	}
-	return metadata.AppendToOutgoingContext(ctx,
-		"authorization", token,
-		"version", constants.Version)
 }
 
 func (core *Core) Status() string {
@@ -100,7 +82,6 @@ func Default(config *Config) (*Core, error) {
 	// // Set up a connection to the server.
 	var err error
 	var core = &Core{
-		serviceDone:        make(chan bool),
 		dumpDone:           make(chan bool),
 		heartbeatResetChan: make(chan bool),
 		cancelFunc:         nil,
@@ -121,32 +102,9 @@ func Default(config *Config) (*Core, error) {
 	}
 	core.grpcClient = pb.NewEngineClient(grpcConn)
 
-	deviceToken, err := meta.GetCredentialDeviceToken()
-	if err == nil {
-		core.deviceToken = deviceToken
-	} else if !constants.IsErrNil(err) {
-		return nil, err
-	}
-	resp, err := core.grpcClient.HandShake(core.ContextWithToken(context.TODO()), &pb.HandShakeRequest{
-		SystemInfo: GetSystemInfo(),
-	})
+	core.user, err = NewUser(core.grpcClient)
 	if err != nil {
-		return nil, err
-	}
-	core.deviceToken = resp.Token
-	core.deviceId = resp.DeviceId
-	if err := meta.SetCredentialDeviceToken(core.deviceToken); err != nil {
-		return nil, err
-	}
-
-	userToken, err := meta.GetCredentialUserToken()
-	if err != nil && !constants.IsErrNil(err) {
-		return nil, err
-	}
-	if len(userToken) > 0 {
-		// refresh login data  usinguserToken
-		core.userToken = userToken
-		userLogin("", "")
+		log.Fatal(err)
 	}
 
 	core.localDataDir = filepath.Join(utils.ExecutableDir, "/data")
@@ -165,7 +123,7 @@ func Default(config *Config) (*Core, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	spew.Dump(dockerClient)
 	if err := StopCurrentRunningContainers(dockerClient); err != nil {
 		log.Fatal(err)
 	}
@@ -173,8 +131,8 @@ func Default(config *Config) (*Core, error) {
 		log.Fatal(err)
 	}
 
-	core.hb = NewHeartbeat(core.ContextWithToken(context.TODO()), core.grpcClient)
-	core.jobScheduler = NewJobScheduler(core.ContextWithToken(context.TODO()), core.grpcClient, dockerClient, core.localDataDir)
+	core.hb = NewHeartbeat(core.user.ContextWithToken(context.TODO()), core.grpcClient)
+	core.jobScheduler = NewJobScheduler(core.user, core.grpcClient, dockerClient, core.localDataDir)
 	core.status = STATUS_WAITING
 	logger.Debug("core initialized")
 
@@ -213,49 +171,8 @@ func (core *Core) Stop(waitTillJobDone bool) error {
 	if core.status != STATUS_RUNNING {
 		return nil
 	}
-	core.serviceDone <- waitTillJobDone
 	core.status = STATUS_STOPPING
 	return nil
-}
-
-func (core *Core) run() {
-	_, cancel := context.WithCancel(context.Background())
-	core.cancelFunc = cancel
-	stop := false
-	go func() {
-		waitTillJobDone := <-core.serviceDone
-		stop = true
-		if !waitTillJobDone {
-			cancel()
-		}
-	}()
-	go func() {
-		ticker := time.NewTicker(600 * time.Second)
-		for !stop {
-			select {
-			case <-ticker.C:
-				err := core.cleanup()
-				if err != nil {
-					log.Printf("%+v\n", err)
-				}
-			default:
-				// err := RunSingleJob(core.ContextWithToken(ctx))
-				// if errors.Is(err, ErrNoJob) {
-				// 	logger.Warning("no job")
-				// 	time.Sleep(time.Second * 60)
-				// } else if errors.Is(err, context.Canceled) {
-				// 	logger.Warning("job cancelled")
-				// } else if err != nil {
-				// 	logger.Warning(err)
-				// 	logger.Error(err)
-				// 	time.Sleep(time.Second * 60)
-				// }
-			}
-		}
-		core.mu.Lock()
-		core.status = STATUS_WAITING
-		core.mu.Unlock()
-	}()
 }
 
 func (core *Core) cleanup() error {
@@ -340,4 +257,32 @@ func fmtDuration(d time.Duration) string {
 			return strconv.Itoa(int(amount)) + " seconds"
 		}
 	}
+}
+
+type UserInfo struct {
+	Id    string
+	Name  string
+	Email string
+}
+
+func (core *Core) GetUserInfo() *UserInfo {
+	if core.user == nil || core.user.Id == "" {
+		return nil
+	}
+	core.user.mu.RLock()
+	defer core.user.mu.RUnlock()
+
+	return &UserInfo{
+		Id:    core.user.Id,
+		Name:  core.user.Name,
+		Email: core.user.Email,
+	}
+}
+
+func (core *Core) Login(account string, password string) error {
+	return core.user.Login(core.grpcClient, account, password)
+}
+
+func (core *Core) Logout() error {
+	return core.user.Logout()
 }

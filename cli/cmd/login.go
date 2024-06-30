@@ -26,6 +26,7 @@ var loginCmd = &cobra.Command{
 }
 
 func runLogin(cmd *cobra.Command, args []string) {
+	request.TryPing()
 	reader := bufio.NewReader(os.Stdin)
 	var err error
 	username, err := cmd.Flags().GetString("username")

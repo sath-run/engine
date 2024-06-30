@@ -28,19 +28,42 @@ after startuping, sath will automatically accept and run jobs`,
 	Run: runStartup,
 }
 
+func startEngineBySystemctl() bool {
+	systemctl, err := exec.LookPath("systemd")
+	if err != nil || len(systemctl) == 0 {
+		return false
+	}
+	fmt.Println("trying to start sath by systemctl")
+	cmd := exec.Command("systemctl", "start", "sath")
+	out, err := cmd.Output()
+	if err != nil {
+		fmt.Println("fail to run systemctl: ", err)
+		return false
+	}
+	fmt.Println(string(out))
+	return true
+}
+
 func startEngine() {
 	fmt.Println("starting sath engine")
 	var buf bytes.Buffer
-	command := exec.Command(filepath.Join(utils.ExecutableDir, "sath-engine"))
-	command.Stderr = &buf
-	err := command.Start()
 
-	if err != nil {
-		log.Fatal(err)
+	if startEngineBySystemctl() {
+		// nothing to do
+	} else {
+		fmt.Println("starting sath by executing sath-engine binary")
+		// start engine by executing sath-engine
+		command := exec.Command(filepath.Join(utils.ExecutableDir, "sath-engine"))
+		command.Stderr = &buf
+		err := command.Start()
+		if err != nil {
+			log.Fatal(err)
+		}
+		time.Sleep(time.Second)
 	}
-	time.Sleep(time.Second)
+
 	if ok := request.PingSathEngine(); ok {
-		log.Println("sath engine successfully started")
+		fmt.Println("sath engine successfully started")
 	} else {
 		if pid, _ := request.FindRunningDaemonPid(); pid != 0 {
 			log.Fatalf("fail to ping sath engine: %s", buf.String())
@@ -88,7 +111,7 @@ func runStartup(cmd *cobra.Command, args []string) {
 			if err := upgradeExecutables(); err != nil {
 				log.Fatal(err)
 			}
-			fmt.Printf("your sath version is successfully upgraded to %s\n", version)
+			fmt.Printf("your sath has been successfully upgraded to version %s\n", version)
 			return
 		} else {
 			startEngine()

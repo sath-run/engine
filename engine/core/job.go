@@ -85,7 +85,7 @@ type Job struct {
 }
 
 type JobScheduler struct {
-	ctx         context.Context
+	user        *User
 	grpc        pb.EngineClient
 	docker      *client.Client
 	dir         string
@@ -96,9 +96,9 @@ type JobScheduler struct {
 	pendingJobs map[*Job]bool
 }
 
-func NewJobScheduler(ctx context.Context, grpc pb.EngineClient, docker *client.Client, dir string) *JobScheduler {
+func NewJobScheduler(user *User, grpc pb.EngineClient, docker *client.Client, dir string) *JobScheduler {
 	scheduler := JobScheduler{
-		ctx:        ctx,
+		user:       user,
 		grpc:       grpc,
 		docker:     docker,
 		dir:        dir,
@@ -201,8 +201,8 @@ func (scheduler *JobScheduler) fetchNewJob() {
 	if scheduler.status != JobSchedulerStatusRunning {
 		return
 	}
-
-	res, err := scheduler.grpc.GetNewJob(scheduler.ctx, &pb.JobGetRequest{})
+	ctx := scheduler.user.ContextWithToken(context.TODO())
+	res, err := scheduler.grpc.GetNewJob(ctx, &pb.JobGetRequest{})
 	if err != nil {
 		logger.Error(err)
 		return
@@ -211,7 +211,7 @@ func (scheduler *JobScheduler) fetchNewJob() {
 		// no available jobs from server
 		return
 	}
-	stream, err := scheduler.grpc.NotifyExecStatus(scheduler.ctx)
+	stream, err := scheduler.grpc.NotifyExecStatus(ctx)
 	if err != nil {
 		logger.Error(err)
 		return
@@ -259,7 +259,8 @@ func (job *Job) updateStatus(status pb.EnumExecStatus, message string, progress 
 	if err = job.stream.Send(req); errors.Is(err, io.EOF) {
 		// server may ternimate stream connection after a configured idle timeout
 		// in this case, reconnect and try it again
-		stream, err2 := job.scheduler.grpc.NotifyExecStatus(job.scheduler.ctx)
+		ctx := job.scheduler.user.ContextWithToken(context.TODO())
+		stream, err2 := job.scheduler.grpc.NotifyExecStatus(ctx)
 		if err2 != nil {
 			job.handleError(err2)
 			return
@@ -338,7 +339,7 @@ func (job *Job) run() {
 
 	ctn := job.container
 	scheduler := job.scheduler
-	ctx := scheduler.ctx
+	ctx := scheduler.user.ContextWithToken(context.TODO())
 	if len(ctn.containerId) == 0 {
 		// prepare and start docker container
 		dir := ctn.dir

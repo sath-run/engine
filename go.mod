@@ -6,7 +6,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v26.1.4+incompatible
-	github.com/docker/docker v27.0.0+incompatible
+	github.com/docker/docker v27.0.2+incompatible
 	github.com/gammazero/deque v0.2.1
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510

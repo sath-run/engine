@@ -10,12 +10,12 @@ import (
 )
 
 func StartService(c *gin.Context) {
-	if core.GetUserInfo() == nil {
+	if engine.GetUserInfo() == nil {
 		// login is required
 		c.AbortWithStatusJSON(http.StatusUnauthorized, "login is required")
 		return
 	}
-	err := core.Start()
+	err := engine.Start()
 	if errors.Is(err, core.ErrRunning) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "engine is already started",
@@ -33,33 +33,33 @@ func StartService(c *gin.Context) {
 }
 
 func StopService(c *gin.Context) {
-	var form struct {
-		Wait bool `form:"wait"`
-	}
-	if err := c.ShouldBind(&form); fatal(c, err) {
-		return
-	}
-	err := core.Stop(form.Wait)
-	if fatal(c, err) {
-		return
-	}
+	// var form struct {
+	// 	Wait bool `form:"wait"`
+	// }
+	// if err := c.ShouldBind(&form); fatal(c, err) {
+	// 	return
+	// }
+	// err := core.Stop(form.Wait)
+	// if fatal(c, err) {
+	// 	return
+	// }
 	c.JSON(http.StatusOK, gin.H{
 		"message": "sath-engine stopped",
 	})
 }
 
 func GetServiceStatus(c *gin.Context) {
-	status := core.GetJobStatus()
-	jobs := []gin.H{}
-	if status != nil {
-		jobs = append(jobs, gin.H{
-			"execId": status.Id,
-		})
-	}
+	// status := core.GetJobStatus()
+	// jobs := []gin.H{}
+	// if status != nil {
+	// 	jobs = append(jobs, gin.H{
+	// 		"execId": status.Id,
+	// 	})
+	// }
 	c.JSON(http.StatusOK, gin.H{
-		"status":  core.Status(),
+		// "status":  core.Status(),
 		"version": constants.Version,
-		"jobs":    jobs,
+		// "jobs":    jobs,
 	})
 }
 

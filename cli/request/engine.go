@@ -16,18 +16,35 @@ import (
 )
 
 var Origin string = "http://unix"
+var socket string
+
+func Init(host string) {
+	socket = host
+}
+
+func TryPing() {
+	SendRequestToEngine("GET", "/ping", nil)
+}
+
+func pingSathEngine() bool {
+	_, code, err := sendRequestToEngine("GET", "/ping", nil)
+	if err == nil && code == 200 {
+		return true
+	} else {
+		return false
+	}
+}
 
 func PingSathEngine() bool {
 	for i := 0; i < 3; i++ {
 		time.Sleep(time.Second)
 		// ping sath-engine to make sure it is started
-		if Ping() {
+		if pingSathEngine() {
 			return true
 		} else {
 			continue
 		}
 	}
-
 	return false
 }
 
@@ -43,26 +60,17 @@ func sendRequestToEngine(method string, path string, data map[string]interface{}
 	client := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", "/var/run/sath/engine.sock")
+				return net.Dial("unix", socket)
 			},
 		},
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
-	if errors.Is(err, syscall.ECONNREFUSED) {
-		if pid, _ := FindRunningDaemonPid(); pid == 0 {
-			fmt.Println("sath-engine is not started")
-			fmt.Println("  use `sath startup` to start it")
-		} else {
-			fmt.Printf("sath-engine is running at process %d\n", pid)
-			fmt.Println("can not connect sath-engine")
-			fmt.Println("  use `sath restart` to restart it")
-		}
-		os.Exit(1)
-	} else if err != nil {
+	if err != nil {
 		return nil, 0, err
 	}
+
 	defer resp.Body.Close()
 	//Create a variable of the same type as our model
 	body, err := io.ReadAll(resp.Body)
@@ -83,19 +91,21 @@ func sendRequestToEngine(method string, path string, data map[string]interface{}
 
 func SendRequestToEngine(method string, path string, data map[string]interface{}) (map[string]interface{}, int) {
 	res, code, err := sendRequestToEngine(method, path, data)
+	if errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, os.ErrNotExist) {
+		if pid, _ := FindRunningDaemonPid(); pid == 0 {
+			fmt.Println("sath-engine is not started")
+			fmt.Println("  run `sath startup` to start it")
+		} else {
+			fmt.Printf("sath-engine is running at process %d\n", pid)
+			fmt.Println("can not connect sath-engine:", err)
+			fmt.Println("  run `sath restart` to restart it")
+		}
+		os.Exit(1)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
 	return res, code
-}
-
-func Ping() bool {
-	_, code, err := sendRequestToEngine("GET", "/ping", nil)
-	if err == nil && code == 200 {
-		return true
-	} else {
-		return false
-	}
 }
 
 func EngineGet(path string) map[string]interface{} {

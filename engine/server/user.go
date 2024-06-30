@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sath-run/engine/engine/core"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -17,7 +16,7 @@ func Login(c *gin.Context) {
 	if err := c.Bind(&form); fatal(c, err) {
 		return
 	}
-	if err := core.Login(form.Username, form.Password); err != nil {
+	if err := engine.Login(form.Username, form.Password); err != nil {
 		if st, ok := status.FromError(err); ok {
 			if st.Code() == codes.InvalidArgument {
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -37,7 +36,7 @@ func Login(c *gin.Context) {
 }
 
 func GetUserInfo(c *gin.Context) {
-	info := core.GetUserInfo()
+	info := engine.GetUserInfo()
 	if info == nil {
 		c.JSON(http.StatusOK, gin.H{})
 	} else {
@@ -49,7 +48,7 @@ func GetUserInfo(c *gin.Context) {
 }
 
 func Logout(c *gin.Context) {
-	if err := core.Logout(); fatal(c, err) {
+	if err := engine.Logout(); fatal(c, err) {
 		return
 	}
 	c.Status(http.StatusOK)

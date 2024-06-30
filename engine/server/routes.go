@@ -4,8 +4,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sath-run/engine/engine/core"
 	"github.com/sath-run/engine/engine/logger"
 )
+
+var engine *core.Core
 
 func fatal(c *gin.Context, err error) bool {
 	if err == nil {
@@ -22,8 +25,9 @@ func fatal(c *gin.Context, err error) bool {
 		return true
 	}
 }
-func Init(file string) {
+func Init(file string, egin *core.Core) {
 	logger.Debug("initializing api")
+	engine = egin
 	r := gin.Default()
 	// r.SetTrustedProxies([]string{"unix"})
 	r.SetTrustedProxies(nil)
@@ -37,7 +41,7 @@ func Init(file string) {
 	r.POST("/services/start", StartService)
 	r.POST("/services/stop", StopService)
 	r.GET("/services/status", GetServiceStatus)
-	r.GET("/jobs/stream", StreamJobStatus)
+	// r.GET("/jobs/stream", StreamJobStatus)
 	r.GET("/jobs", GetJobStatus)
 	r.POST("/jobs/pause", PauseJob)
 	r.POST("/jobs/resume", ResumeJob)

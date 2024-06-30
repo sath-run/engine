@@ -1,10 +1,11 @@
 package main
 
 import (
-	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"os"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sath-run/engine/constants"
@@ -16,6 +17,7 @@ import (
 
 var dataPath string
 var grpcAddrArg string
+var sockArg string
 var sslArg bool
 var showVersion bool
 
@@ -23,14 +25,15 @@ func init() {
 	flag.StringVar(&dataPath, "data", "", "path of data folder")
 	flag.StringVar(&grpcAddrArg, "grpc", "", "grpc address for debug mode")
 	flag.BoolVar(&sslArg, "ssl", true, "grpc comunication whether or not using ssl")
-	flag.BoolVar(&showVersion, "version", false, "show current version")
+	flag.BoolVar(&showVersion, "version", false, "show current version and exit")
 }
 
 func main() {
 	flag.Parse()
 
 	if showVersion {
-		log.Fatalln("Sath " + constants.Version)
+		fmt.Println("Sath " + constants.Version)
+		return
 	}
 
 	if err := logger.Init(); err != nil {
@@ -41,12 +44,12 @@ func main() {
 		log.Fatalf("fail to init DB, %+v\n", err)
 	}
 
-	sockfile := "/var/run/sath/engine.sock"
+	// sockfile := filepath.Join(utils.ExecutableDir, "sath.sock")
+	sockfile := "/var/run/sath.sock"
 
-	// 若sockfile已存在则删除
-	if err := os.Remove(sockfile); err != nil && !errors.Is(err, os.ErrNotExist) {
-		panic(err)
-	}
+	// servers should unlink the socket pathname prior to binding it.
+	// https://troydhanson.github.io/network/Unix_domain_sockets.html
+	syscall.Unlink(sockfile)
 
 	var grpcAddr string = "scheduler.sath.run:50051"
 	if len(grpcAddrArg) > 0 {
@@ -61,12 +64,12 @@ func main() {
 	} else {
 		ssl = true
 	}
-
-	if err := core.Init(&core.Config{
+	engine, err := core.Default(&core.Config{
 		GrpcAddress: grpcAddr,
 		SSL:         ssl,
 		DataDir:     dataPath,
-	}); err != nil {
+	})
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -75,5 +78,5 @@ func main() {
 	}
 
 	// api will block main thread forever
-	server.Init(sockfile)
+	server.Init(sockfile, engine)
 }
