@@ -59,6 +59,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 	} else {
 		fmt.Println("no user is logged in")
 		fmt.Println("  use `sath login` to login your account")
+		return
 	}
 	status := request.EngineGet("/services/status")
 	printStatusResult(status)

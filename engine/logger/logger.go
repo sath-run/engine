@@ -16,7 +16,7 @@ var errLogger *lumberjack.Logger
 var stdLogger *lumberjack.Logger
 
 func Init() error {
-	loggerDir := filepath.Join(utils.ExecutableDir, "/log")
+	loggerDir := filepath.Join(utils.SathHome, "/log")
 	if err := os.MkdirAll(loggerDir, os.ModePerm); err != nil {
 		return err
 	}

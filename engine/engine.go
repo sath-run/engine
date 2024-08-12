@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 	"github.com/sath-run/engine/constants"
 	"github.com/sath-run/engine/engine/core"
 	"github.com/sath-run/engine/engine/logger"
 	"github.com/sath-run/engine/engine/server"
 	"github.com/sath-run/engine/meta"
+	"github.com/sath-run/engine/utils"
 )
 
 var dataPath string
@@ -44,8 +47,8 @@ func main() {
 		log.Fatalf("fail to init DB, %+v\n", err)
 	}
 
-	// sockfile := filepath.Join(utils.ExecutableDir, "sath.sock")
-	sockfile := "/var/run/sath.sock"
+	sockfile := utils.SockFile()
+	os.MkdirAll(filepath.Dir(sockfile), os.ModePerm)
 
 	// servers should unlink the socket pathname prior to binding it.
 	// https://troydhanson.github.io/network/Unix_domain_sockets.html
@@ -58,11 +61,14 @@ func main() {
 		grpcAddr = grpcEnv
 	}
 
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	ssl := false
 	if !sslArg || os.Getenv("SATH_MODE") == "debug" {
 		ssl = false
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	} else {
 		ssl = true
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
 	engine, err := core.Default(&core.Config{
 		GrpcAddress: grpcAddr,

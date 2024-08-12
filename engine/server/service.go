@@ -50,16 +50,16 @@ func StopService(c *gin.Context) {
 
 func GetServiceStatus(c *gin.Context) {
 	// status := core.GetJobStatus()
-	// jobs := []gin.H{}
+	jobs := []gin.H{}
 	// if status != nil {
 	// 	jobs = append(jobs, gin.H{
 	// 		"execId": status.Id,
 	// 	})
 	// }
 	c.JSON(http.StatusOK, gin.H{
-		// "status":  core.Status(),
+		"status":  engine.Status(),
 		"version": constants.Version,
-		// "jobs":    jobs,
+		"jobs":    jobs,
 	})
 }
 

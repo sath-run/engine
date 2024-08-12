@@ -52,8 +52,9 @@ func startEngine() {
 		// nothing to do
 	} else {
 		fmt.Println("starting sath by executing sath-engine binary")
+
 		// start engine by executing sath-engine
-		command := exec.Command(filepath.Join(utils.ExecutableDir, "sath-engine"))
+		command := exec.Command(filepath.Join(utils.SathHome, "sath-engine"))
 		command.Stderr = &buf
 		err := command.Start()
 		if err != nil {

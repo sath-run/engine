@@ -38,7 +38,7 @@ type JobStatus struct {
 // }
 
 // func readJobStatusFromLog() ([]*JobStatus, error) {
-// logPath := filepath.Join(utils.ExecutableDir, "log", "jobs.log")
+// logPath := filepath.Join(utils.SathHome, "log", "jobs.log")
 // file, err := os.Open(logPath)
 // if errors.Is(err, os.ErrNotExist) {
 // 	return nil, nil

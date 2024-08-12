@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"crypto/tls"
 	"log"
 	"math"
 	"os"
@@ -11,24 +10,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
 	"github.com/pkg/errors"
-	pb "github.com/sath-run/engine/engine/core/protobuf"
+	"github.com/sath-run/engine/engine/core/conns"
+	"github.com/sath-run/engine/engine/core/scheduler"
 	"github.com/sath-run/engine/engine/logger"
 	"github.com/sath-run/engine/utils"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
-	STATUS_UNINITIALIZED = iota
-	STATUS_WAITING
-	STATUS_STARTING
-	STATUS_RUNNING
-	STATUS_STOPPING
+	STATUS_UNINITIALIZED = "uninitialized"
+	STATUS_STARTING      = "starting"
+	STATUS_RUNNING       = "running"
+	STATUS_PAUSED        = "paused"
+	STATUS_STOPPING      = "stopping"
 )
 
 var (
@@ -39,42 +33,24 @@ var (
 
 type Core struct {
 	mu                 sync.RWMutex
-	status             int
+	status             string
 	dumpDone           chan bool
 	heartbeatResetChan chan bool
 
-	user       *User
-	grpcClient pb.EngineClient
+	c *conns.Connection
 
 	cancelFunc   context.CancelFunc
 	hostDataDir  string
 	localDataDir string
 
 	hb           *Heartbeat
-	jobScheduler *JobScheduler
+	jobScheduler *scheduler.Scheduler
 }
 
 type Config struct {
 	GrpcAddress string
 	SSL         bool
 	DataDir     string
-}
-
-func (core *Core) Status() string {
-	switch core.status {
-	case STATUS_UNINITIALIZED:
-		return "UNINITIALIZED"
-	case STATUS_STARTING:
-		return "STARTING"
-	case STATUS_WAITING:
-		return "WAITING"
-	case STATUS_RUNNING:
-		return "RUNNING"
-	case STATUS_STOPPING:
-		return "STOPPING"
-	default:
-		return "UNKNOWN"
-	}
 }
 
 func Default(config *Config) (*Core, error) {
@@ -87,27 +63,12 @@ func Default(config *Config) (*Core, error) {
 		cancelFunc:         nil,
 	}
 
-	var credential credentials.TransportCredentials
-	if config.SSL {
-		credential = credentials.NewTLS(&tls.Config{
-			InsecureSkipVerify: false,
-		})
-	} else {
-		credential = insecure.NewCredentials()
-	}
-
-	grpcConn, err := grpc.NewClient(config.GrpcAddress, grpc.WithTransportCredentials(credential))
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	core.grpcClient = pb.NewEngineClient(grpcConn)
-
-	core.user, err = NewUser(core.grpcClient)
+	core.c, err = conns.NewConnection(config.GrpcAddress, config.SSL)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	core.localDataDir = filepath.Join(utils.ExecutableDir, "/data")
+	core.localDataDir = filepath.Join(utils.SathHome, "/data")
 
 	if os.Getenv("SATH_ENV") == "docker" {
 		core.hostDataDir = config.DataDir
@@ -119,21 +80,20 @@ func Default(config *Config) (*Core, error) {
 		log.Fatal(err)
 	}
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	core.hb = NewHeartbeat(core.c)
+	core.jobScheduler, err = scheduler.NewScheduler(context.TODO(), core.c, core.localDataDir, time.Second*30)
 	if err != nil {
 		return nil, err
-	}
-	spew.Dump(dockerClient)
-	if err := StopCurrentRunningContainers(dockerClient); err != nil {
-		log.Fatal(err)
 	}
 	if err := core.cleanup(); err != nil {
 		log.Fatal(err)
 	}
 
-	core.hb = NewHeartbeat(core.user.ContextWithToken(context.TODO()), core.grpcClient)
-	core.jobScheduler = NewJobScheduler(core.user, core.grpcClient, dockerClient, core.localDataDir)
-	core.status = STATUS_WAITING
+	if u := core.c.User(); u != nil {
+		core.Start()
+	} else {
+		core.status = STATUS_PAUSED
+	}
 	logger.Debug("core initialized")
 
 	return core, nil
@@ -187,10 +147,10 @@ func (core *Core) cleanup() error {
 	}
 
 	// clean up stopped containers
-	arg := filters.Arg("label", "run.sath.starter")
-	if _, err := core.jobScheduler.docker.ContainersPrune(context.Background(), filters.NewArgs(arg)); err != nil {
-		return err
-	}
+	// arg := filters.Arg("label", "run.sath.starter")
+	// if _, err := core.docker.ContainersPrune(context.Background(), filters.NewArgs(arg)); err != nil {
+	// 	return err
+	// }
 	return nil
 }
 
@@ -266,23 +226,25 @@ type UserInfo struct {
 }
 
 func (core *Core) GetUserInfo() *UserInfo {
-	if core.user == nil || core.user.Id == "" {
+	u := core.c.User()
+	if u == nil {
 		return nil
 	}
-	core.user.mu.RLock()
-	defer core.user.mu.RUnlock()
-
 	return &UserInfo{
-		Id:    core.user.Id,
-		Name:  core.user.Name,
-		Email: core.user.Email,
+		Id:    u.Id,
+		Name:  u.Name,
+		Email: u.Email,
 	}
+}
+
+func (core *Core) Status() string {
+	return core.status
 }
 
 func (core *Core) Login(account string, password string) error {
-	return core.user.Login(core.grpcClient, account, password)
+	return core.c.Login(context.TODO(), account, password)
 }
 
 func (core *Core) Logout() error {
-	return core.user.Logout()
+	return core.c.Logout()
 }

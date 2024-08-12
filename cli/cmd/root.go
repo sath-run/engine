@@ -6,7 +6,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/sath-run/engine/cli/request"
 	"github.com/sath-run/engine/utils"
@@ -44,7 +43,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&host, "host", "H", os.Getenv("SATH_SOCK"), "Daemon socket to connect to")
 	if len(host) == 0 {
-		host = filepath.Join(utils.ExecutableDir, "sath.sock")
+		host = utils.SockFile()
 	}
 	request.Init(host)
 

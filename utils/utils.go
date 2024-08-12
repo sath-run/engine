@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-var ExecutableDir string
+var SathHome string
 
 func init() {
 	executable, err := os.Executable()
@@ -17,5 +17,14 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ExecutableDir = filepath.Dir(executable)
+
+	if os.Getenv("SATH_MODE") == "debug" {
+		SathHome = "/tmp/sath"
+	} else {
+		SathHome = filepath.Dir(executable)
+	}
+}
+
+func SockFile() string {
+	return filepath.Join(SathHome, "sath.sock")
 }

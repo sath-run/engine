@@ -6,50 +6,73 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sath-run/engine/engine/core/conns"
 	pb "github.com/sath-run/engine/engine/core/protobuf"
 	"github.com/sath-run/engine/engine/logger"
 )
 
 type Heartbeat struct {
-	reconn_chan chan bool
+	c            *conns.Connection
+	reconnecting chan bool
+	closing      chan struct{}
 }
 
-func NewHeartbeat(ctx context.Context, client pb.EngineClient) *Heartbeat {
+func NewHeartbeat(c *conns.Connection) *Heartbeat {
 	hb := Heartbeat{
-		reconn_chan: make(chan bool),
+		c:            c,
+		reconnecting: make(chan bool),
+		closing:      make(chan struct{}),
 	}
 	ticker := time.NewTicker(30 * time.Second)
 
 	var stream pb.Engine_RouteCommandClient
 	var err error
-
 	go func() {
 		for {
 			select {
-			case <-hb.reconn_chan:
-				stream, err = client.RouteCommand(ctx)
+			case <-hb.closing:
+				ticker.Stop()
+				close(hb.reconnecting)
+				close(hb.closing)
+				return
+			case <-hb.reconnecting:
+				ctx, _ := c.AppendToOutgoingContext(context.Background())
+				stream, err = c.RouteCommand(ctx)
 				if err != nil {
 					logger.Error(err)
 				}
 			case <-ticker.C:
-				if err = stream.Send(&pb.CommandResponse{}); errors.Is(err, io.EOF) {
-					// if stream is disconnected, reconnect
-					hb.Connect()
-				} else if err != nil {
-					logger.Error(err)
+				if s := stream; s != nil {
+					if err = s.Send(&pb.CommandResponse{}); errors.Is(err, io.EOF) {
+						// if stream is disconnected, reconnect
+						hb.Connect(false)
+					} else if err != nil {
+						logger.Error(err)
+					}
+				} else {
+					hb.Connect(false)
 				}
 			}
 		}
 	}()
-	hb.Connect()
+	hb.Connect(true)
 	return &hb
 }
 
-func (hb *Heartbeat) Connect() bool {
-	select {
-	case hb.reconn_chan <- true:
+func (hb *Heartbeat) Connect(wait bool) bool {
+	if wait {
+		hb.reconnecting <- true
 		return true
-	default:
-		return false
+	} else {
+		select {
+		case hb.reconnecting <- true:
+			return true
+		default:
+			return false
+		}
 	}
+}
+
+func (hb *Heartbeat) Close() {
+	hb.closing <- struct{}{}
 }

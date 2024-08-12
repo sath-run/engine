@@ -43,14 +43,14 @@ func upgradeExecutables() error {
 	var err error
 	fmt.Println("downloading sath-engine")
 	url := fmt.Sprintf("https://download.sath.run/binaries/%s/%s/sath-engine", runtime.GOOS, runtime.GOARCH)
-	err = request.DownloadFile(filepath.Join(utils.ExecutableDir, "sath-engine"), url)
+	err = request.DownloadFile(filepath.Join(utils.SathHome, "sath-engine"), url)
 	if err != nil {
 		return fmt.Errorf("fail to download sath-engine %+v", err)
 	}
 
 	fmt.Println("downloading sath-cli")
 	url = fmt.Sprintf("https://download.sath.run/binaries/%s/%s/sath", runtime.GOOS, runtime.GOARCH)
-	err = request.DownloadFile(filepath.Join(utils.ExecutableDir, "sath"), url)
+	err = request.DownloadFile(filepath.Join(utils.SathHome, "sath"), url)
 	if err != nil {
 		return fmt.Errorf("fail to download sath-cli %+v", err)
 	}

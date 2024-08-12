@@ -1,4 +1,4 @@
-package core
+package scheduler
 
 import (
 	"bufio"
@@ -212,8 +212,7 @@ func ExecImage(
 	}
 }
 
-func StopCurrentRunningContainers(client *client.Client) error {
-	ctx := context.Background()
+func stopCurrentRunningContainers(ctx context.Context, client *client.Client) error {
 	filter := filters.NewArgs(filters.Arg("label", "run.sath.starter"))
 	containers, err := client.ContainerList(ctx, container.ListOptions{
 		Filters: filter,

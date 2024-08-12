@@ -2,20 +2,24 @@ syntax = "proto3";
 package protobuf;
 option go_package = "github.com/sath-run/engine/engine/core/protobuf";
 
-enum EnumExecStatus {
+enum EnumExecState {
   EES_UNSPECIFIED = 0;
-	EES_DEFAULT = 100;
-  EES_DOWNLOADING_INPUTS = 200;
-  EES_PROCESSING_INPUTS = 300;
-  EES_WAITING = 400;
-	EES_PULLING_IMAGE = 500;
-  EES_INIT_CONTAINER = 600;
+	EES_INITIALIZED = 100;
+  EES_PREPARE_IMAGE = 200;
+  EES_DOWNLOADING_INPUTS = 300;
+  EES_PROCESSING_INPUTS = 400;
+  EES_QUEUING = 500;
+  EES_PREPARE_CONTAINER = 600;
   EES_RUNNING = 700;
   EES_PROCESSING_OUPUTS = 800;
 	EES_SUCCESS = 900;
-	EES_CANCELED = 1000;
-	EES_ERROR = 1100;
-  EES_PAUSED = 1200;
+}
+
+enum EnumExecFlag {
+  EEF_DEFAULT = 0;
+  EEF_ERROR = 0x1;
+  EEF_CANCELED = 0x2;
+  EEF_PAUSED = 0x4;
 }
 
 message JobGetRequest {
@@ -89,11 +93,12 @@ message Image {
 }
 
 message ExecNotificationRequest {
-  EnumExecStatus status = 1;
+  EnumExecState state = 1;
   string message = 2;
   double progress = 3;
-  repeated GpuStats gpu_stats = 4;
-  repeated ExecOutput outputs = 5;
+  uint64 flag = 4;
+  repeated GpuStats gpu_stats = 5;
+  repeated ExecOutput outputs = 6;
 }
 
 enum ExecOutputStatus {
