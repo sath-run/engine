@@ -1,4 +1,4 @@
-package scheduler_test
+package daemon_test
 
 // func TestFileUpload(t *testing.T) {
 // 	err := core.Init(&core.Config{

@@ -1,4 +1,4 @@
-package core
+package daemon
 
 import (
 	"context"
@@ -6,18 +6,16 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sath-run/engine/engine/core/conns"
-	pb "github.com/sath-run/engine/engine/core/protobuf"
-	"github.com/sath-run/engine/engine/logger"
+	pb "github.com/sath-run/engine/engine/daemon/protobuf"
 )
 
 type Heartbeat struct {
-	c            *conns.Connection
+	c            *Connection
 	reconnecting chan bool
 	closing      chan struct{}
 }
 
-func NewHeartbeat(c *conns.Connection) *Heartbeat {
+func NewHeartbeat(c *Connection) *Heartbeat {
 	hb := Heartbeat{
 		c:            c,
 		reconnecting: make(chan bool),
@@ -39,7 +37,7 @@ func NewHeartbeat(c *conns.Connection) *Heartbeat {
 				ctx, _ := c.AppendToOutgoingContext(context.Background())
 				stream, err = c.RouteCommand(ctx)
 				if err != nil {
-					logger.Error(err)
+					// logger.Error(err)
 				}
 			case <-ticker.C:
 				if s := stream; s != nil {
@@ -47,7 +45,7 @@ func NewHeartbeat(c *conns.Connection) *Heartbeat {
 						// if stream is disconnected, reconnect
 						hb.Connect(false)
 					} else if err != nil {
-						logger.Error(err)
+						// logger.Error(err)
 					}
 				} else {
 					hb.Connect(false)

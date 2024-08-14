@@ -1,6 +1,6 @@
 syntax = "proto3";
 package protobuf;
-option go_package = "github.com/sath-run/engine/engine/core/protobuf";
+option go_package = "github.com/sath-run/engine/engine/daemon/protobuf";
 
 enum EnumExecState {
   EES_UNSPECIFIED = 0;
@@ -49,16 +49,9 @@ message JobGetResponse {
   string exec_id = 3;
   Image image = 4;
   GpuConf gpuConf = 5;
-  Volume volume = 6;
-  repeated string cmd = 7;
-  repeated JobInput inputs = 8;
-  repeated JobOutput outputs = 9;
-}
-
-message Volume {
-  string data = 1;
-  string source = 2;
-  string output = 3;
+  repeated string cmd = 6;
+  repeated JobInput inputs = 7;
+  repeated JobOutput outputs = 8;
 }
 
 message FileRequest {
@@ -90,15 +83,18 @@ message JobOutput {
 message Image {
   string url = 1;
   string auth = 2;
+  map<string, string> binds = 3;
 }
 
 message ExecNotificationRequest {
   EnumExecState state = 1;
-  string message = 2;
-  double progress = 3;
+  string id = 2;
+  string message = 3;
   uint64 flag = 4;
-  repeated GpuStats gpu_stats = 5;
-  repeated ExecOutput outputs = 6;
+  uint64 current = 5;
+  uint64 total = 6;
+  repeated GpuStats gpu_stats = 7;
+  repeated ExecOutput outputs = 8;
 }
 
 enum ExecOutputStatus {

@@ -1,4 +1,4 @@
-package core
+package daemon
 
 import (
 	"context"
@@ -11,9 +11,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/sath-run/engine/engine/core/conns"
-	"github.com/sath-run/engine/engine/core/scheduler"
-	"github.com/sath-run/engine/engine/logger"
 	"github.com/sath-run/engine/utils"
 )
 
@@ -37,14 +34,14 @@ type Core struct {
 	dumpDone           chan bool
 	heartbeatResetChan chan bool
 
-	c *conns.Connection
+	c *Connection
 
 	cancelFunc   context.CancelFunc
 	hostDataDir  string
 	localDataDir string
 
 	hb           *Heartbeat
-	jobScheduler *scheduler.Scheduler
+	jobScheduler *Scheduler
 }
 
 type Config struct {
@@ -54,7 +51,6 @@ type Config struct {
 }
 
 func Default(config *Config) (*Core, error) {
-	logger.Debug("initializing core")
 	// // Set up a connection to the server.
 	var err error
 	var core = &Core{
@@ -63,7 +59,7 @@ func Default(config *Config) (*Core, error) {
 		cancelFunc:         nil,
 	}
 
-	core.c, err = conns.NewConnection(config.GrpcAddress, config.SSL)
+	core.c, err = NewConnection(config.GrpcAddress, config.SSL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -81,7 +77,7 @@ func Default(config *Config) (*Core, error) {
 	}
 
 	core.hb = NewHeartbeat(core.c)
-	core.jobScheduler, err = scheduler.NewScheduler(context.TODO(), core.c, core.localDataDir, time.Second*30)
+	core.jobScheduler, err = NewScheduler(context.TODO(), core.c, core.localDataDir, time.Second*30)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +90,6 @@ func Default(config *Config) (*Core, error) {
 	} else {
 		core.status = STATUS_PAUSED
 	}
-	logger.Debug("core initialized")
 
 	return core, nil
 }

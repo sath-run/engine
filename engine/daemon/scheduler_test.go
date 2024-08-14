@@ -1,16 +1,16 @@
-package scheduler_test
+package daemon_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/sath-run/engine/engine/core/conns"
-	pb "github.com/sath-run/engine/engine/core/protobuf"
-	"github.com/sath-run/engine/engine/core/scheduler"
+	"github.com/sath-run/engine/engine/daemon"
+	pb "github.com/sath-run/engine/engine/daemon/protobuf"
 	"github.com/sath-run/engine/meta"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -95,7 +95,7 @@ func (client *EngineClient) RouteCommand(ctx context.Context, opts ...grpc.CallO
 	return client.RouteCommandClient, nil
 }
 
-var jobCount = 1
+var jobCount = 2
 
 func (client *EngineClient) GetNewJob(ctx context.Context, in *pb.JobGetRequest, opts ...grpc.CallOption) (*pb.JobGetResponse, error) {
 	if jobCount == 0 {
@@ -103,9 +103,9 @@ func (client *EngineClient) GetNewJob(ctx context.Context, in *pb.JobGetRequest,
 	}
 	jobCount--
 	return &pb.JobGetResponse{
-		JobId:     "Job001",
-		ProjectId: "Project001",
-		ExecId:    "Exec001",
+		JobId:     fmt.Sprintf("Job%03d", jobCount),
+		ProjectId: fmt.Sprintf("Project%03d", jobCount),
+		ExecId:    fmt.Sprintf("Exec%03d", jobCount),
 		GpuConf: &pb.GpuConf{
 			Opt: pb.GpuOpt_EGO_None,
 		},
@@ -115,7 +115,16 @@ func (client *EngineClient) GetNewJob(ctx context.Context, in *pb.JobGetRequest,
 		Cmd: []string{
 			"bash",
 			"-c",
-			"python -c 'print({originalNum}*{originalNum})' > /output/result.txt",
+			fmt.Sprintf("python -c 'print(%d*%d)' > /output/result.txt", jobCount, jobCount),
+		},
+		Inputs: []*pb.JobInput{
+			{
+				Path: "wiki.txt",
+				Req: &pb.FileRequest{
+					Url:    "https://www.wikipedia.org/",
+					Method: "GET",
+				},
+			},
 		},
 	}, nil
 }
@@ -127,7 +136,7 @@ func NewEngineClient() *EngineClient {
 	}
 }
 
-var c *conns.Connection
+var c *daemon.Connection
 
 func checkErr(err error) {
 	if err != nil {
@@ -144,7 +153,7 @@ func TestMain(m *testing.M) {
 	checkErr(err)
 
 	client := NewEngineClient()
-	c, err = conns.NewConnectionWithClient(client)
+	c, err = daemon.NewConnectionWithClient(client)
 	checkErr(err)
 	c.Login(context.TODO(), "", "")
 	code := m.Run()
@@ -156,7 +165,7 @@ func TestScheduler(t *testing.T) {
 	checkErr(err)
 	log.Trace().Str("schedulerDir", dir).Send()
 	log.Trace().Any("user", c.User()).Send()
-	s, err := scheduler.NewScheduler(context.Background(), c, dir, 5*time.Second)
+	s, err := daemon.NewScheduler(context.Background(), c, dir, 5*time.Second)
 	checkErr(err)
 	s.Start()
 	time.Sleep(time.Second * 90)

@@ -1,14 +1,14 @@
-package server
+package api
 
 import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sath-run/engine/engine/core"
-	"github.com/sath-run/engine/engine/logger"
+	"github.com/rs/zerolog/log"
+	"github.com/sath-run/engine/engine/daemon"
 )
 
-var engine *core.Core
+var engine *daemon.Core
 
 func fatal(c *gin.Context, err error) bool {
 	if err == nil {
@@ -16,17 +16,15 @@ func fatal(c *gin.Context, err error) bool {
 	} else if c.Writer.Status() == http.StatusBadRequest {
 		return false
 	} else if c.IsAborted() {
-
-		logger.Error(err)
+		log.Fatal().Err(err).Send()
 		return true
 	} else {
-		logger.Error(err)
+		log.Fatal().Err(err).Send()
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return true
 	}
 }
-func Init(file string, egin *core.Core) {
-	logger.Debug("initializing api")
+func Init(file string, egin *daemon.Core) {
 	engine = egin
 	r := gin.Default()
 	// r.SetTrustedProxies([]string{"unix"})

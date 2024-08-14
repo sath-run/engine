@@ -3,11 +3,9 @@ module github.com/sath-run/engine
 go 1.22.4
 
 require (
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/docker/cli v27.1.1+incompatible
 	github.com/docker/docker v27.1.1+incompatible
 	github.com/gin-gonic/gin v1.10.0
-	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/manifoldco/promptui v0.9.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pkg/errors v0.9.1
@@ -16,10 +14,10 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	go.etcd.io/bbolt v1.3.10
+	golang.org/x/sync v0.8.0
 	golang.org/x/term v0.23.0
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

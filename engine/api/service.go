@@ -1,4 +1,4 @@
-package server
+package api
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sath-run/engine/constants"
-	"github.com/sath-run/engine/engine/core"
+	"github.com/sath-run/engine/engine/daemon"
 )
 
 func StartService(c *gin.Context) {
@@ -16,11 +16,11 @@ func StartService(c *gin.Context) {
 		return
 	}
 	err := engine.Start()
-	if errors.Is(err, core.ErrRunning) {
+	if errors.Is(err, daemon.ErrRunning) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "engine is already started",
 		})
-	} else if errors.Is(err, core.ErrStopping) {
+	} else if errors.Is(err, daemon.ErrStopping) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "engine is stopping, please wait for current job completion",
 		})

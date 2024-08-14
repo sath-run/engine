@@ -11,9 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/sath-run/engine/constants"
-	"github.com/sath-run/engine/engine/core"
-	"github.com/sath-run/engine/engine/logger"
-	"github.com/sath-run/engine/engine/server"
+	"github.com/sath-run/engine/engine/api"
+	"github.com/sath-run/engine/engine/daemon"
 	"github.com/sath-run/engine/meta"
 	"github.com/sath-run/engine/utils"
 )
@@ -37,10 +36,6 @@ func main() {
 	if showVersion {
 		fmt.Println("Sath " + constants.Version)
 		return
-	}
-
-	if err := logger.Init(); err != nil {
-		log.Fatalf("fail to init logger, %+v\n", err)
 	}
 
 	if err := meta.Init(); err != nil {
@@ -70,7 +65,7 @@ func main() {
 		ssl = true
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
-	engine, err := core.Default(&core.Config{
+	engine, err := daemon.Default(&daemon.Config{
 		GrpcAddress: grpcAddr,
 		SSL:         ssl,
 		DataDir:     dataPath,
@@ -84,5 +79,5 @@ func main() {
 	}
 
 	// api will block main thread forever
-	server.Init(sockfile, engine)
+	api.Init(sockfile, engine)
 }

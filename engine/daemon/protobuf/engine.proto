@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/sath-run/engine/engine/core/protobuf";
+option go_package = "github.com/sath-run/engine/engine/daemon/protobuf";
 
 package protobuf;
 
