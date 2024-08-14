@@ -1,15 +1,15 @@
 syntax = "proto3";
 package protobuf;
-option go_package = "github.com/sath-run/engine/engine/daemon/protobuf";
+option go_package = "github.com/sath-run/engine/daemon/protobuf";
 
 enum EnumExecState {
   EES_UNSPECIFIED = 0;
 	EES_INITIALIZED = 100;
-  EES_PREPARE_IMAGE = 200;
+  EES_PREPARING_IMAGE = 200;
   EES_DOWNLOADING_INPUTS = 300;
   EES_PROCESSING_INPUTS = 400;
   EES_QUEUING = 500;
-  EES_PREPARE_CONTAINER = 600;
+  EES_PREPARING_CONTAINER = 600;
   EES_RUNNING = 700;
   EES_PROCESSING_OUPUTS = 800;
 	EES_SUCCESS = 900;

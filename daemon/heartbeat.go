@@ -6,13 +6,16 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	pb "github.com/sath-run/engine/engine/daemon/protobuf"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	pb "github.com/sath-run/engine/daemon/protobuf"
 )
 
 type Heartbeat struct {
 	c            *Connection
 	reconnecting chan bool
 	closing      chan struct{}
+	logger       zerolog.Logger
 }
 
 func NewHeartbeat(c *Connection) *Heartbeat {
@@ -20,6 +23,7 @@ func NewHeartbeat(c *Connection) *Heartbeat {
 		c:            c,
 		reconnecting: make(chan bool),
 		closing:      make(chan struct{}),
+		logger:       log.With().Str("component", "heartbeat").Logger(),
 	}
 	ticker := time.NewTicker(30 * time.Second)
 
@@ -37,7 +41,7 @@ func NewHeartbeat(c *Connection) *Heartbeat {
 				ctx, _ := c.AppendToOutgoingContext(context.Background())
 				stream, err = c.RouteCommand(ctx)
 				if err != nil {
-					// logger.Error(err)
+					hb.logger.Debug().Err(err).Send()
 				}
 			case <-ticker.C:
 				if s := stream; s != nil {
@@ -45,7 +49,7 @@ func NewHeartbeat(c *Connection) *Heartbeat {
 						// if stream is disconnected, reconnect
 						hb.Connect(false)
 					} else if err != nil {
-						// logger.Error(err)
+						hb.logger.Debug().Err(err).Send()
 					}
 				} else {
 					hb.Connect(false)

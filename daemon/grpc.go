@@ -5,7 +5,7 @@ import (
 	"crypto/tls"
 
 	"github.com/sath-run/engine/constants"
-	pb "github.com/sath-run/engine/engine/daemon/protobuf"
+	pb "github.com/sath-run/engine/daemon/protobuf"
 	"github.com/sath-run/engine/meta"
 
 	"github.com/pkg/errors"

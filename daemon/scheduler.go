@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	pb "github.com/sath-run/engine/engine/daemon/protobuf"
+	pb "github.com/sath-run/engine/daemon/protobuf"
 )
 
 var (

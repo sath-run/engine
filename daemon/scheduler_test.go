@@ -9,8 +9,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/sath-run/engine/engine/daemon"
-	pb "github.com/sath-run/engine/engine/daemon/protobuf"
+	"github.com/sath-run/engine/daemon"
+	pb "github.com/sath-run/engine/daemon/protobuf"
 	"github.com/sath-run/engine/meta"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"

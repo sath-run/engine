@@ -10,9 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
+	"github.com/sath-run/engine/api"
 	"github.com/sath-run/engine/constants"
-	"github.com/sath-run/engine/engine/api"
-	"github.com/sath-run/engine/engine/daemon"
+	"github.com/sath-run/engine/daemon"
 	"github.com/sath-run/engine/meta"
 	"github.com/sath-run/engine/utils"
 )

@@ -5,7 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	"github.com/sath-run/engine/engine/daemon"
+	"github.com/sath-run/engine/daemon"
 )
 
 var engine *daemon.Core

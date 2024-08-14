@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sath-run/engine/constants"
-	"github.com/sath-run/engine/engine/daemon"
+	"github.com/sath-run/engine/daemon"
 )
 
 func StartService(c *gin.Context) {

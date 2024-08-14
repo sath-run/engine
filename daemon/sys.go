@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	pb "github.com/sath-run/engine/engine/daemon/protobuf"
+	pb "github.com/sath-run/engine/daemon/protobuf"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"

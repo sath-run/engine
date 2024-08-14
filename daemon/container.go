@@ -13,7 +13,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	pb "github.com/sath-run/engine/engine/daemon/protobuf"
+	pb "github.com/sath-run/engine/daemon/protobuf"
 )
 
 type Container struct {
