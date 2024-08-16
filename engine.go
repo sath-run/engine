@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -39,7 +40,7 @@ func main() {
 	}
 
 	if err := meta.Init(); err != nil {
-		log.Fatalf("fail to init DB, %+v\n", err)
+		log.Fatal().Err(err).Send()
 	}
 
 	sockfile := utils.SockFile()
@@ -60,7 +61,8 @@ func main() {
 	ssl := false
 	if !sslArg || os.Getenv("SATH_MODE") == "debug" {
 		ssl = false
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		zerolog.SetGlobalLevel(zerolog.Level(constants.LogLevel))
+		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	} else {
 		ssl = true
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -71,7 +73,7 @@ func main() {
 		DataDir:     dataPath,
 	})
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Send()
 	}
 
 	if os.Getenv("SATH_MODE") != "debug" {

@@ -18,6 +18,7 @@ var (
 	ErrUnautherized = errors.New("unautherized")
 	ErrNoJob        = errors.New("no job")
 	ErrActionBusy   = errors.New("action busy")
+	ErrNoUser       = errors.New("no user")
 )
 
 type Status int
@@ -169,8 +170,8 @@ func (scheduler *Scheduler) fetchNewJob() {
 	if len(scheduler.pendingJobs) > 0 {
 		return
 	}
-	baseCtx, hasUser := scheduler.c.AppendToOutgoingContext(context.Background())
-	if !hasUser {
+	user := scheduler.c.user
+	if user == nil {
 		return
 	}
 	go func() {
@@ -183,8 +184,8 @@ func (scheduler *Scheduler) fetchNewJob() {
 			ctx    context.Context
 			cancel context.CancelFunc
 		)
-
-		ctx, cancel = context.WithTimeout(baseCtx, 5*time.Second)
+		ctx = scheduler.c.AppendToOutgoingContext(context.Background(), user)
+		ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		res, err := scheduler.c.GetNewJob(ctx, &pb.JobGetRequest{})
 		if err != nil {
@@ -196,9 +197,8 @@ func (scheduler *Scheduler) fetchNewJob() {
 			scheduler.logger.Info().Msg("no available jobs from server")
 			return
 		}
-		ctx, cancel = context.WithTimeout(baseCtx, 5*time.Second)
-		defer cancel()
 		dir := filepath.Join(scheduler.dir, "job_"+res.ExecId)
+		ctx = scheduler.c.AppendToOutgoingContext(context.Background(), user)
 		job, err := newJob(ctx, scheduler.c, scheduler.cli, scheduler.jobChan, dir, res)
 		if err != nil {
 			scheduler.logger.Warn().Err(err).Msg("scheduler fails to create job")

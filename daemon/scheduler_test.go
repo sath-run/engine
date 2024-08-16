@@ -13,6 +13,7 @@ import (
 	pb "github.com/sath-run/engine/daemon/protobuf"
 	"github.com/sath-run/engine/meta"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -169,4 +170,18 @@ func TestScheduler(t *testing.T) {
 	checkErr(err)
 	s.Start()
 	time.Sleep(time.Second * 90)
+}
+
+func TestNotification(t *testing.T) {
+	credential := insecure.NewCredentials()
+	conn, err := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(credential))
+	checkErr(err)
+	c := pb.NewEngineClient(conn)
+	stream, err := c.NotifyExecStatus(context.TODO())
+	checkErr(err)
+	err = stream.Send(&pb.ExecNotificationRequest{})
+	checkErr(err)
+	_, err = stream.CloseAndRecv()
+	checkErr(err)
+	log.Info().Msg("success")
 }

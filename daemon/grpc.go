@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 
+	"github.com/rs/zerolog/log"
 	"github.com/sath-run/engine/constants"
 	pb "github.com/sath-run/engine/daemon/protobuf"
 	"github.com/sath-run/engine/meta"
@@ -23,10 +24,10 @@ type Connection struct {
 }
 
 type User struct {
+	token string
 	Id    string
 	Name  string
 	Email string
-	Token string
 }
 
 func NewConnection(address string, ssl bool) (*Connection, error) {
@@ -57,7 +58,7 @@ func NewConnectionWithClient(client pb.EngineClient) (*Connection, error) {
 		return nil, err
 	}
 
-	ctx, _ := c.AppendToOutgoingContext(context.TODO())
+	ctx := c.AppendToOutgoingContext(context.TODO(), nil)
 
 	// get or refresh device token from server
 	resp, err := c.HandShake(ctx, &pb.HandShakeRequest{
@@ -73,33 +74,29 @@ func NewConnectionWithClient(client pb.EngineClient) (*Connection, error) {
 		return nil, err
 	}
 
-	if userToken, err := meta.GetCredentialUserToken(); userToken == "" && err == nil {
-		// refresh login data  using userToken
-		ctx := metadata.AppendToOutgoingContext(ctx,
-			"authorization", userToken)
-
-		// we can safely ignore login error
-		c.Login(ctx, "", "")
+	if userToken, err := meta.GetCredentialUserToken(); userToken != "" && err == nil {
+		// refresh login data using userToken
+		ctx := c.AppendToOutgoingContext(ctx, &User{token: userToken})
+		if err := c.Login(ctx, "", ""); err != nil {
+			// we can safely ignore login error
+			log.Warn().Err(err).Msg("error login user")
+		}
 	} else if err != nil && !constants.IsErrNil(err) {
 		return nil, err
 	}
-
 	return &c, nil
 }
 
-func (c *Connection) AppendToOutgoingContext(ctx context.Context) (context.Context, bool) {
-	var token string
-	var hasUser bool
-	if u := c.user; u != nil {
-		token = u.Token
-		hasUser = true
+func (c *Connection) AppendToOutgoingContext(ctx context.Context, user *User, kv ...string) context.Context {
+	kv = append(kv, "version", constants.Version)
+	if user != nil {
+		kv = append(kv, "authorization", user.token)
+	} else if u := c.user; u != nil {
+		kv = append(kv, "authorization", u.token)
 	} else {
-		token = c.deviceToken
-		hasUser = false
+		kv = append(kv, "authorization", c.deviceToken)
 	}
-	return metadata.AppendToOutgoingContext(ctx,
-		"authorization", token,
-		"version", constants.Version), hasUser
+	return metadata.AppendToOutgoingContext(ctx, kv...)
 }
 
 func (c *Connection) Login(ctx context.Context, username string, password string) error {
@@ -111,12 +108,12 @@ func (c *Connection) Login(ctx context.Context, username string, password string
 		return err
 	}
 	user := User{
-		Token: res.Token,
+		token: res.Token,
 		Id:    res.UserId,
 		Name:  res.UserName,
 		Email: res.UserEmail,
 	}
-	if err := meta.SetCredentialUserToken(user.Token); err != nil {
+	if err := meta.SetCredentialUserToken(user.Id); err != nil {
 		return err
 	}
 	c.user = &user
@@ -125,7 +122,7 @@ func (c *Connection) Login(ctx context.Context, username string, password string
 
 func (c *Connection) Logout() error {
 	// clear user token on DB
-	err := meta.SetCredentialUserToken("")
+	err := meta.RemoveCredentialUserToken()
 	if err != nil {
 		return err
 	}

@@ -38,7 +38,7 @@ func NewHeartbeat(c *Connection) *Heartbeat {
 				close(hb.closing)
 				return
 			case <-hb.reconnecting:
-				ctx, _ := c.AppendToOutgoingContext(context.Background())
+				ctx := c.AppendToOutgoingContext(context.Background(), nil)
 				stream, err = c.RouteCommand(ctx)
 				if err != nil {
 					hb.logger.Debug().Err(err).Send()

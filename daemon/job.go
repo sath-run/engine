@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 	pb "github.com/sath-run/engine/daemon/protobuf"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc/metadata"
 )
 
 type JobNotification struct {
@@ -54,10 +55,11 @@ type Job struct {
 	logger zerolog.Logger
 }
 
-func newJob(ctx context.Context, c *Connection, cli *client.Client, queue chan *Job, dir string, metadata *pb.JobGetResponse) (*Job, error) {
+func newJob(ctx context.Context, c *Connection, cli *client.Client, queue chan *Job, dir string, meta *pb.JobGetResponse) (*Job, error) {
 	if err := os.Mkdir(dir, os.ModePerm); err != nil {
 		return nil, err
 	}
+	ctx = metadata.AppendToOutgoingContext(ctx, "exec_id", meta.ExecId)
 	stream, err := c.NotifyExecStatus(ctx)
 	if err != nil {
 		return nil, err
@@ -65,13 +67,13 @@ func newJob(ctx context.Context, c *Connection, cli *client.Client, queue chan *
 	job := &Job{
 		c:         c,
 		cli:       cli,
-		metadata:  metadata,
+		metadata:  meta,
 		state:     pb.EnumExecState_EES_INITIALIZED,
 		createdAt: time.Now(),
 		stream:    stream,
 		queue:     queue,
 		dir:       dir,
-		logger:    log.With().Str("job", metadata.ExecId).Logger(),
+		logger:    log.With().Str("job", meta.ExecId).Logger(),
 	}
 	if err := os.MkdirAll(job.dataDir(), os.ModePerm); err != nil {
 		return nil, err
@@ -131,15 +133,18 @@ func (job *Job) setState(state pb.EnumExecState) {
 func (job *Job) handleCompletion() {
 	if err := job.notifyStatusToRemote(JobNotification{}); err != nil {
 		job.err = errors.Join(job.err, err)
+		job.logger.Warn().Err(err).Msg("err notify status")
 	}
 
 	// block and wait to close stream, error could be ignored
 	if _, err := job.stream.CloseAndRecv(); err != nil {
 		job.err = errors.Join(job.err, err)
+		job.logger.Warn().Err(err).Msg("err CloseAndRecv")
 	}
 
 	if err := os.RemoveAll(job.dir); err != nil {
 		job.err = errors.Join(job.err, err)
+		job.logger.Warn().Err(err).Msg("err RemoveAll")
 	}
 }
 
@@ -195,7 +200,7 @@ func (job *Job) postprocess() {
 }
 
 func (job *Job) prepareImage() error {
-	job.setState(pb.EnumExecState_EES_PREPARE_IMAGE)
+	job.setState(pb.EnumExecState_EES_PREPARING_IMAGE)
 
 	reader, err := job.cli.ImagePull(context.Background(), job.metadata.Image.Url, image.PullOptions{
 		RegistryAuth: job.metadata.Image.Auth,
@@ -289,7 +294,7 @@ func (job *Job) processInputs() error {
 }
 
 func (job *Job) prepareContainer() error {
-	job.setState(pb.EnumExecState_EES_PREPARE_IMAGE)
+	job.setState(pb.EnumExecState_EES_PREPARING_CONTAINER)
 	ctn := job.container
 
 	// if container has not been created by docker, create one

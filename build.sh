@@ -7,7 +7,7 @@ pkg=github.com/sath-run/engine/constants
 now=$(date +%s)
 sha1=$(git rev-parse HEAD)
 version=$(head -n1 VERSION)
-ldflags="-X '$pkg.BuildTime=$now' -X '$pkg.Version=$version' -X '$pkg.Sha1Ver=$sha1'"
+ldflags="-X '$pkg.BuildTime=$now' -X '$pkg.Version=$version' -X '$pkg.Sha1Ver=$sha1' -X '$pkg.LogLevel=7'"
 
 mkdir -p $SATH_HOME/build
 cd $SATH_HOME/cli && go build -v -ldflags "$ldflags" && mv -f cli $SATH_HOME/build/sath

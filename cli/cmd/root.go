@@ -7,7 +7,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/rs/zerolog/log"
+
+	"github.com/rs/zerolog"
 	"github.com/sath-run/engine/cli/request"
+	"github.com/sath-run/engine/constants"
 	"github.com/sath-run/engine/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -37,6 +41,9 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
+
+	zerolog.SetGlobalLevel(zerolog.Level(constants.LogLevel))
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.sath.yaml)")
 	cobra.OnInitialize(initConfig)

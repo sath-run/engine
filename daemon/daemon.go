@@ -7,19 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/utils"
-)
-
-const (
-	STATUS_UNINITIALIZED = "uninitialized"
-	STATUS_STARTING      = "starting"
-	STATUS_RUNNING       = "running"
-	STATUS_PAUSED        = "paused"
-	STATUS_STOPPING      = "stopping"
 )
 
 var (
@@ -29,10 +20,7 @@ var (
 )
 
 type Core struct {
-	mu                 sync.RWMutex
-	status             string
-	dumpDone           chan bool
-	heartbeatResetChan chan bool
+	dumpDone chan bool
 
 	c *Connection
 
@@ -40,8 +28,8 @@ type Core struct {
 	hostDataDir  string
 	localDataDir string
 
-	hb           *Heartbeat
-	jobScheduler *Scheduler
+	hb        *Heartbeat
+	scheduler *Scheduler
 }
 
 type Config struct {
@@ -51,12 +39,11 @@ type Config struct {
 }
 
 func Default(config *Config) (*Core, error) {
-	// // Set up a connection to the server.
+	// Set up a connection to the server.
 	var err error
 	var core = &Core{
-		dumpDone:           make(chan bool),
-		heartbeatResetChan: make(chan bool),
-		cancelFunc:         nil,
+		dumpDone:   make(chan bool),
+		cancelFunc: nil,
 	}
 
 	core.c, err = NewConnection(config.GrpcAddress, config.SSL)
@@ -77,7 +64,7 @@ func Default(config *Config) (*Core, error) {
 	}
 
 	core.hb = NewHeartbeat(core.c)
-	core.jobScheduler, err = NewScheduler(context.TODO(), core.c, core.localDataDir, time.Second*30)
+	core.scheduler, err = NewScheduler(context.TODO(), core.c, core.localDataDir, time.Second*30)
 	if err != nil {
 		return nil, err
 	}
@@ -88,57 +75,34 @@ func Default(config *Config) (*Core, error) {
 	if u := core.c.User(); u != nil {
 		core.Start()
 	} else {
-		core.status = STATUS_PAUSED
+		core.Pause()
 	}
 
 	return core, nil
 }
 
 func (core *Core) Start() error {
-	core.mu.Lock()
-	defer core.mu.Unlock()
+	core.scheduler.Start()
+	return nil
+}
 
-	if core.status == STATUS_RUNNING {
-		return ErrRunning
-	}
-
-	if core.status == STATUS_STOPPING {
-		return ErrStopping
-	}
-
-	core.status = STATUS_STARTING
-
-	core.jobScheduler.Start()
-
-	core.status = STATUS_RUNNING
+func (core *Core) Pause() error {
+	core.scheduler.Pause()
 	return nil
 }
 
 func (core *Core) Stop(waitTillJobDone bool) error {
-	core.mu.Lock()
-	defer core.mu.Unlock()
-
-	if core.status == STATUS_STOPPING && !waitTillJobDone {
-		core.cancelFunc()
-		return nil
-	}
-
-	if core.status != STATUS_RUNNING {
-		return nil
-	}
-	core.status = STATUS_STOPPING
 	return nil
 }
 
 func (core *Core) cleanup() error {
-	if core.status == STATUS_UNINITIALIZED {
-		// clean up data folder
-		if err := os.RemoveAll(core.localDataDir); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(core.localDataDir, os.ModePerm); err != nil {
-			return err
-		}
+
+	// clean up data folder
+	if err := os.RemoveAll(core.localDataDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(core.localDataDir, os.ModePerm); err != nil {
+		return err
 	}
 
 	// clean up stopped containers
@@ -233,11 +197,21 @@ func (core *Core) GetUserInfo() *UserInfo {
 }
 
 func (core *Core) Status() string {
-	return core.status
+	switch core.scheduler.status {
+	case StatusRunning:
+		return "running"
+	case StatusPaused:
+		return "paused"
+	case StatusPausing:
+		return "pausing"
+	default:
+		return "invalid"
+	}
 }
 
 func (core *Core) Login(account string, password string) error {
-	return core.c.Login(context.TODO(), account, password)
+	ctx := core.c.AppendToOutgoingContext(context.TODO(), nil)
+	return core.c.Login(ctx, account, password)
 }
 
 func (core *Core) Logout() error {
