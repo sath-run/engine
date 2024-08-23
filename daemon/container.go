@@ -27,6 +27,7 @@ type Container struct {
 	currentJob *Job
 	binds      map[string]string
 	logger     zerolog.Logger
+	resourceId string
 }
 
 func newContainer(dockerCli *client.Client, dir string, job *Job) *Container {
@@ -34,31 +35,37 @@ func newContainer(dockerCli *client.Client, dir string, job *Job) *Container {
 		cli:        dockerCli,
 		imageUrl:   job.metadata.Image.Url,
 		imageAuth:  job.metadata.Image.Auth,
-		binds:      map[string]string{},
 		currentJob: job,
 		dir:        dir,
 		gpuOpt:     job.metadata.GpuConf.Opt,
 		vram:       0, // TODO
+		binds:      map[string]string{},
+		resourceId: job.metadata.ResourceId,
 	}
 
-	for k, v := range job.metadata.Image.Binds {
-		ctn.binds[k] = v
-	}
-	for _, dir := range []string{"data", "source", "output"} {
-		if _, ok := ctn.binds[dir]; !ok {
-			ctn.binds[dir] = "/" + dir
+	for _, v := range []string{"data", "source", "output", "resource"} {
+		bind := job.metadata.Image.Binds[v]
+		if bind == "" {
+			bind = "/" + v
+		}
+		if v == "resource" {
+			ctn.binds[job.resourceDir] = bind
+		} else {
+			ctn.binds[filepath.Join(ctn.dir, v)] = bind
 		}
 	}
+
 	for dir := range ctn.binds {
-		os.Mkdir(filepath.Join(ctn.dir, dir), os.ModePerm)
+		os.Mkdir(dir, os.ModePerm)
 	}
+
 	return ctn
 }
 
 func (ctn *Container) init(ctx context.Context) error {
 	binds := []string{}
 	for k, v := range ctn.binds {
-		binds = append(binds, fmt.Sprintf("%s:%s", filepath.Join(ctn.dir, k), v))
+		binds = append(binds, fmt.Sprintf("%s:%s", k, v))
 	}
 	gpuOptsVal := opts.GpuOpts{}
 	if ctn.gpuOpt != pb.GpuOpt_EGO_None {

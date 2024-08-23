@@ -38,10 +38,12 @@ type JobOutput struct {
 }
 
 type Job struct {
-	c         *Connection
-	cli       *client.Client
-	metadata  *pb.JobGetResponse
-	container *Container
+	c           *Connection
+	cli         *client.Client
+	metadata    *pb.JobGetResponse
+	container   *Container
+	rm          *ResourceManager
+	resourceDir string
 
 	dir       string
 	stream    pb.Engine_NotifyExecStatusClient
@@ -55,11 +57,11 @@ type Job struct {
 	logger zerolog.Logger
 }
 
-func newJob(ctx context.Context, c *Connection, cli *client.Client, queue chan *Job, dir string, meta *pb.JobGetResponse) (*Job, error) {
+func newJob(ctx context.Context, c *Connection, cli *client.Client, queue chan *Job, rm *ResourceManager, dir string, meta *pb.JobGetResponse) (*Job, error) {
 	if err := os.Mkdir(dir, os.ModePerm); err != nil {
 		return nil, err
 	}
-	ctx = metadata.AppendToOutgoingContext(ctx, "exec_id", meta.ExecId)
+	ctx = metadata.AppendToOutgoingContext(ctx, "id", meta.JobId)
 	stream, err := c.NotifyExecStatus(ctx)
 	if err != nil {
 		return nil, err
@@ -68,18 +70,24 @@ func newJob(ctx context.Context, c *Connection, cli *client.Client, queue chan *
 		c:         c,
 		cli:       cli,
 		metadata:  meta,
+		rm:        rm,
 		state:     pb.EnumExecState_EES_INITIALIZED,
 		createdAt: time.Now(),
 		stream:    stream,
 		queue:     queue,
 		dir:       dir,
-		logger:    log.With().Str("job", meta.ExecId).Logger(),
+		logger:    log.With().Str("job", meta.JobId).Logger(),
 	}
 	if err := os.MkdirAll(job.dataDir(), os.ModePerm); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(job.outputDir(), os.ModePerm); err != nil {
 		return nil, err
+	}
+	if dir, err := filepath.Abs(filepath.Join(job.dir, "..", "resource_"+job.metadata.ResourceId)); err != nil {
+		return nil, err
+	} else {
+		job.resourceDir = dir
 	}
 	job.logger.Debug().Msg("job created")
 	return job, nil
@@ -156,6 +164,12 @@ func (job *Job) preprocess() {
 		job.queue <- job
 	}()
 	if err = job.prepareImage(); err != nil {
+		return
+	}
+	if err = job.downloadResources(); err != nil {
+		return
+	}
+	if err = job.processResources(); err != nil {
 		return
 	}
 	if err = job.downloadInputs(); err != nil {
@@ -245,6 +259,68 @@ func (job *Job) prepareImage() error {
 	return scanner.Err()
 }
 
+func (job *Job) downloadResources() error {
+	job.setState(pb.EnumExecState_EES_DOWNLOADING_RESOURCES)
+	// sequentially download each resource file
+	// TODO: batch download and rate limit
+	for _, resource := range job.metadata.Resources {
+		if err := job.downloadFile(context.TODO(), resource.Path, job.resourceDir, resource.Req.Url); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (job *Job) downloadFile(ctx context.Context, path string, dir string, url string) error {
+	id := path
+	// sanitize path in case it contains relative path like: "../.."
+	// which may hack the directory structure limitation in client-engine
+	path, err := filepath.Abs(filepath.Join("/", path))
+	if err != nil {
+		return err
+	}
+	path = filepath.Join(dir, path)
+
+	// make dir, error can be ignored
+	os.MkdirAll(filepath.Dir(path), os.ModePerm)
+	resp := job.rm.Download(ctx, path, url)
+	progress := 0.0
+
+	// check for download progress every 500 ms
+	t := time.NewTicker(500 * time.Millisecond)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-t.C:
+			newProgress := resp.Progress()
+			if newProgress-progress > 0.01 || newProgress == 1 {
+				progress = newProgress
+				if err := job.notifyStatusToRemote(JobNotification{
+					Id:      id,
+					Current: uint(resp.Current()),
+					Total:   uint(resp.Total()),
+				}); err != nil {
+					resp.Cancel()
+					return nil
+				}
+			}
+
+		case <-resp.Done:
+			// check for errors
+			if err := resp.Err(); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+}
+
+func (job *Job) processResources() error {
+	job.setState(pb.EnumExecState_EES_PROCESSING_RESOURCES)
+	return nil
+}
+
 func (job *Job) downloadInputs() error {
 	job.setState(pb.EnumExecState_EES_DOWNLOADING_INPUTS)
 	files := job.metadata.Inputs
@@ -253,34 +329,7 @@ func (job *Job) downloadInputs() error {
 	// TODO: limit bandwidth
 	for _, file := range files {
 		g.Go(func() error {
-			filePath := filepath.Join(job.dataDir(), file.Path)
-			// make dir, error can be ignored
-			os.MkdirAll(filepath.Dir(filePath), os.ModePerm)
-
-			out, err := os.Create(filePath)
-			if err != nil {
-				return err
-			}
-			defer out.Close()
-
-			job.logger.Trace().Str("file", file.Path).Msg("start downloading")
-			req, err := http.NewRequestWithContext(ctx, file.Req.Method, file.Req.Url, nil)
-			if err != nil {
-				return err
-			}
-
-			client := http.DefaultClient
-			resp, err := client.Do(req)
-			if err != nil {
-				return err
-			}
-			defer resp.Body.Close()
-
-			_, err = io.Copy(out, resp.Body)
-			if err != nil {
-				return err
-			}
-			return nil
+			return job.downloadFile(ctx, file.Path, job.dataDir(), file.Req.Url)
 		})
 	}
 	err := g.Wait()

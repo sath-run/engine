@@ -104,9 +104,7 @@ func (client *EngineClient) GetNewJob(ctx context.Context, in *pb.JobGetRequest,
 	}
 	jobCount--
 	return &pb.JobGetResponse{
-		JobId:     fmt.Sprintf("Job%03d", jobCount),
-		ProjectId: fmt.Sprintf("Project%03d", jobCount),
-		ExecId:    fmt.Sprintf("Exec%03d", jobCount),
+		JobId: fmt.Sprintf("Job%03d", jobCount),
 		GpuConf: &pb.GpuConf{
 			Opt: pb.GpuOpt_EGO_None,
 		},

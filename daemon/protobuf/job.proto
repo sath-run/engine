@@ -4,15 +4,17 @@ option go_package = "github.com/sath-run/engine/daemon/protobuf";
 
 enum EnumExecState {
   EES_UNSPECIFIED = 0;
-	EES_INITIALIZED = 100;
-  EES_PREPARING_IMAGE = 200;
-  EES_DOWNLOADING_INPUTS = 300;
-  EES_PROCESSING_INPUTS = 400;
-  EES_QUEUING = 500;
-  EES_PREPARING_CONTAINER = 600;
-  EES_RUNNING = 700;
-  EES_PROCESSING_OUPUTS = 800;
-	EES_SUCCESS = 900;
+	EES_INITIALIZED = 1000;
+  EES_PREPARING_IMAGE = 2000;
+  EES_DOWNLOADING_RESOURCES = 3000;
+  EES_PROCESSING_RESOURCES = 4000;
+  EES_DOWNLOADING_INPUTS = 5000;
+  EES_PROCESSING_INPUTS = 6000;
+  EES_QUEUING = 7000;
+  EES_PREPARING_CONTAINER = 8000;
+  EES_RUNNING = 9000;
+  EES_PROCESSING_OUPUTS = 10000;
+	EES_SUCCESS = 65535;
 }
 
 enum EnumExecFlag {
@@ -44,14 +46,14 @@ message GpuConf {
 }
 
 message JobGetResponse {
-  string project_id = 1;
-  string job_id = 2;
-  string exec_id = 3;
-  Image image = 4;
-  GpuConf gpuConf = 5;
-  repeated string cmd = 6;
-  repeated JobInput inputs = 7;
-  repeated JobOutput outputs = 8;
+  string job_id = 1;
+  string resource_id = 2;
+  Image image = 3;
+  GpuConf gpuConf = 4;
+  repeated string cmd = 5;
+  repeated JobInput inputs = 6;
+  repeated JobOutput outputs = 7;
+  repeated JobResource resources = 8;
 }
 
 message FileRequest {
@@ -78,6 +80,11 @@ message JobOutput {
   string path = 2;
   FileRequest req = 3;
   string configs = 4;
+}
+
+message JobResource {
+  string path = 1;
+  FileRequest req = 2;
 }
 
 message Image {

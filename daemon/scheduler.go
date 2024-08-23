@@ -50,6 +50,7 @@ type Volume struct {
 type Scheduler struct {
 	c           *Connection
 	cli         *client.Client
+	rm          *ResourceManager
 	dir         string
 	status      Status
 	closeChan   chan struct{}
@@ -74,6 +75,7 @@ func NewScheduler(ctx context.Context, c *Connection, dir string, jobInterval ti
 	scheduler := Scheduler{
 		c:           c,
 		cli:         docker,
+		rm:          NewResourceManager(),
 		dir:         dir,
 		status:      StatusPaused,
 		jobChan:     make(chan *Job, 8),
@@ -95,7 +97,9 @@ func (scheduler *Scheduler) loop(jobInterval time.Duration) {
 			if job.err != nil {
 				job.logger.Info().Err(job.err).Str("state", job.state.String()).Send()
 				go job.handleCompletion()
-				scheduler.rescheduleContainer(job.container)
+				if job.container != nil {
+					scheduler.rescheduleContainer(job.container)
+				}
 				continue
 			}
 			switch job.state {
@@ -192,14 +196,14 @@ func (scheduler *Scheduler) fetchNewJob() {
 			scheduler.logger.Warn().Err(err).Msg("scheduler fails to get a new job")
 			return
 		}
-		if res == nil || len(res.ExecId) == 0 {
+		if res == nil || len(res.JobId) == 0 {
 			// no available jobs from server
 			scheduler.logger.Info().Msg("no available jobs from server")
 			return
 		}
-		dir := filepath.Join(scheduler.dir, "job_"+res.ExecId)
+		dir := filepath.Join(scheduler.dir, "job_"+res.JobId)
 		ctx = scheduler.c.AppendToOutgoingContext(context.Background(), user)
-		job, err := newJob(ctx, scheduler.c, scheduler.cli, scheduler.jobChan, dir, res)
+		job, err := newJob(ctx, scheduler.c, scheduler.cli, scheduler.jobChan, scheduler.rm, dir, res)
 		if err != nil {
 			scheduler.logger.Warn().Err(err).Msg("scheduler fails to create job")
 			return
@@ -214,7 +218,7 @@ func (scheduler *Scheduler) attachContainerForJob(job *Job) bool {
 
 	// find container if any
 	for _, c := range scheduler.containers {
-		if c.imageUrl == job.metadata.Image.Url {
+		if c.imageUrl == job.metadata.Image.Url && c.resourceId == job.metadata.ResourceId {
 			container = c
 			break
 		}
@@ -231,7 +235,7 @@ func (scheduler *Scheduler) attachContainerForJob(job *Job) bool {
 		job.logger.Debug().Str("dir", dir).Msg("container created for job")
 	} else if container.currentJob == nil {
 		container.currentJob = job
-		scheduler.logger.Debug().Str("container", container.id).Str("job", job.metadata.ExecId).Msg("attach container for job")
+		scheduler.logger.Debug().Str("container", container.id).Str("job", job.metadata.JobId).Msg("attach container for job")
 	} else {
 		// TODO: support multiple container for the same image
 		container = nil
@@ -239,7 +243,7 @@ func (scheduler *Scheduler) attachContainerForJob(job *Job) bool {
 	if container == nil {
 		// if no container found nor a new container was allocated, enqueue job
 		scheduler.pendingJobs[job] = true
-		scheduler.logger.Debug().Int("pendingJobs", len(scheduler.pendingJobs)).Str("job", job.metadata.ExecId).Msg("job queued")
+		scheduler.logger.Debug().Int("pendingJobs", len(scheduler.pendingJobs)).Str("job", job.metadata.JobId).Msg("job queued")
 		return false
 	}
 	job.container = container

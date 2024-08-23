@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/rs/zerolog/log"
 
@@ -67,7 +69,9 @@ func main() {
 		ssl = true
 		zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	}
-	engine, err := daemon.Default(&daemon.Config{
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	engine, err := daemon.Default(ctx, &daemon.Config{
 		GrpcAddress: grpcAddr,
 		SSL:         ssl,
 		DataDir:     dataPath,

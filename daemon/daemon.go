@@ -2,13 +2,15 @@ package daemon
 
 import (
 	"context"
-	"log"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
+	"github.com/docker/docker/api/types/filters"
 	"github.com/pkg/errors"
 	"github.com/sath-run/engine/utils"
 )
@@ -38,7 +40,7 @@ type Config struct {
 	DataDir     string
 }
 
-func Default(config *Config) (*Core, error) {
+func Default(ctx context.Context, config *Config) (*Core, error) {
 	// Set up a connection to the server.
 	var err error
 	var core = &Core{
@@ -48,7 +50,7 @@ func Default(config *Config) (*Core, error) {
 
 	core.c, err = NewConnection(config.GrpcAddress, config.SSL)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Send()
 	}
 
 	core.localDataDir = filepath.Join(utils.SathHome, "/data")
@@ -60,16 +62,16 @@ func Default(config *Config) (*Core, error) {
 	}
 
 	if err := os.MkdirAll(core.localDataDir, os.ModePerm); err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Send()
 	}
 
 	core.hb = NewHeartbeat(core.c)
-	core.scheduler, err = NewScheduler(context.TODO(), core.c, core.localDataDir, time.Second*30)
+	core.scheduler, err = NewScheduler(ctx, core.c, core.localDataDir, time.Second*30)
 	if err != nil {
 		return nil, err
 	}
 	if err := core.cleanup(); err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Send()
 	}
 
 	if u := core.c.User(); u != nil {
@@ -106,10 +108,10 @@ func (core *Core) cleanup() error {
 	}
 
 	// clean up stopped containers
-	// arg := filters.Arg("label", "run.sath.starter")
-	// if _, err := core.docker.ContainersPrune(context.Background(), filters.NewArgs(arg)); err != nil {
-	// 	return err
-	// }
+	arg := filters.Arg("label", "run.sath.starter")
+	if _, err := core.scheduler.cli.ContainersPrune(context.Background(), filters.NewArgs(arg)); err != nil {
+		return err
+	}
 	return nil
 }
 
