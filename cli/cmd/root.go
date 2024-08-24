@@ -7,21 +7,24 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/rs/zerolog/log"
+
+	"github.com/rs/zerolog"
+	"github.com/sath-run/engine/cli/request"
+	"github.com/sath-run/engine/constants"
+	"github.com/sath-run/engine/utils"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
+var host string
 var cfgFile string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "sath",
-	Short: "SATH is a platform to make Science AT Home",
-	Long: `A CLI tool to run algorithm for SATH platform in your local machine,
-Complete documentation is available at https://github.com/sath-run/cli`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Short: "\nSath endpoint for scientific computing in edge devices",
+	Long:  "\nSath endpoint for scientific computing in edge devices",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -34,13 +37,22 @@ func Execute() {
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
 
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
 
+	zerolog.SetGlobalLevel(zerolog.Level(constants.LogLevel))
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.sath.yaml)")
+	cobra.OnInitialize(initConfig)
+
+	rootCmd.PersistentFlags().StringVarP(&host, "host", "H", os.Getenv("SATH_SOCK"), "Daemon socket to connect to")
+	if len(host) == 0 {
+		host = utils.SockFile()
+	}
+	request.Init(host)
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

@@ -30,12 +30,24 @@ func setCredentialValue(key []byte, value string) error {
 	return err
 }
 
+func removeCredentialValue(key []byte) error {
+	err := db.Update(func(tx *bolt.Tx) error {
+		bkt := getCredentialBucket(tx)
+		return bkt.Delete(key)
+	})
+	return err
+}
+
 func GetCredentialUserToken() (string, error) {
 	return getCredentialValue(bucketKeyUserToken)
 }
 
 func SetCredentialUserToken(token string) error {
 	return setCredentialValue(bucketKeyUserToken, token)
+}
+
+func RemoveCredentialUserToken() error {
+	return removeCredentialValue(bucketKeyUserToken)
 }
 
 func GetCredentialDeviceToken() (string, error) {

@@ -22,12 +22,10 @@ var statusCmd = &cobra.Command{
 func printStatusResult(result map[string]interface{}) {
 	var status string = result["status"].(string)
 	switch status {
-	case "WAITING":
-		fmt.Println("sath-engine is waiting")
+	case "paused":
+		fmt.Println("sath-engine is paused")
 		fmt.Println("  use `sath run` to run jobs")
-	case "UNINITIALIZED", "STARTING":
-		fmt.Println("sath-engine is starting, it may take a few seconds")
-	case "RUNNING":
+	case "running":
 		fmt.Println("sath-engine is running")
 		if jobs, ok := result["jobs"].([]interface{}); ok {
 			fmt.Println("Current running jobs:")
@@ -59,6 +57,7 @@ func runStatus(cmd *cobra.Command, args []string) {
 	} else {
 		fmt.Println("no user is logged in")
 		fmt.Println("  use `sath login` to login your account")
+		return
 	}
 	status := request.EngineGet("/services/status")
 	printStatusResult(status)

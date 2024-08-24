@@ -1,12 +1,4 @@
-package core_test
-
-import (
-	"encoding/json"
-	"testing"
-
-	"github.com/davecgh/go-spew/spew"
-	"github.com/hashicorp/go-retryablehttp"
-)
+package daemon_test
 
 // func TestFileUpload(t *testing.T) {
 // 	err := core.Init(&core.Config{
@@ -77,7 +69,7 @@ import (
 // 	// if err := core.ExecImage(
 // 	// 	context.Background(), core.GetDockerClient(), job.Cmds, "zengxinzhy/amber-runtime-cuda11.4.2:1.2", "/tmp/sath/sath_tmp_1040899213", "/tmp/sath/sath_tmp_1040899213", job.VolumePath,
 // 	// 	job.GpuOpts, &containerId, func(progress float64) {
-// 	// 		// 	status.Status = pb.EnumExecStatus_EES_RUNNING
+// 	// 		// 	status.Status = pb.EnumExecState_EES_RUNNING
 // 	// 		// 	status.Progress = progress
 // 	// 		// 	populateJobStatus(status)
 // 	// 	}); err != nil {
@@ -92,16 +84,16 @@ import (
 // 	}
 // }
 
-func TestRequest(t *testing.T) {
-	obj := map[string]any{
-		"x": 123,
-		"y": "fewef",
-	}
-	data, err := json.Marshal(obj)
-	checkErr(err)
-	req, err := retryablehttp.NewRequest("POST", "http://127.0.0.1:8080/outputs", data)
-	checkErr(err)
-	res, err := retryablehttp.NewClient().Do(req)
-	checkErr(err)
-	spew.Dump(res)
-}
+// func TestRequest(t *testing.T) {
+// 	obj := map[string]any{
+// 		"x": 123,
+// 		"y": "fewef",
+// 	}
+// 	data, err := json.Marshal(obj)
+// 	checkErr(err)
+// 	req, err := retryablehttp.NewRequest("POST", "http://127.0.0.1:8080/outputs", data)
+// 	checkErr(err)
+// 	res, err := retryablehttp.NewClient().Do(req)
+// 	checkErr(err)
+// 	spew.Dump(res)
+// }

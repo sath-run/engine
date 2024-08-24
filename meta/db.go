@@ -40,7 +40,7 @@ func Init() error {
 	// https://github.com/etcd-io/bbolt/pull/6
 	options.NoFreelistSync = true
 
-	path := filepath.Join(utils.ExecutableDir, "meta.db")
+	path := filepath.Join(utils.SathHome, "meta.db")
 	bdb, err := bolt.Open(path, 0644, &options)
 	if err != nil {
 		return err

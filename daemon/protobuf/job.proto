@@ -1,0 +1,126 @@
+syntax = "proto3";
+package protobuf;
+option go_package = "github.com/sath-run/engine/daemon/protobuf";
+
+enum EnumExecState {
+  EES_UNSPECIFIED = 0;
+	EES_INITIALIZED = 1000;
+  EES_PREPARING_IMAGE = 2000;
+  EES_DOWNLOADING_RESOURCES = 3000;
+  EES_PROCESSING_RESOURCES = 4000;
+  EES_DOWNLOADING_INPUTS = 5000;
+  EES_PROCESSING_INPUTS = 6000;
+  EES_QUEUING = 7000;
+  EES_PREPARING_CONTAINER = 8000;
+  EES_RUNNING = 9000;
+  EES_PROCESSING_OUPUTS = 10000;
+	EES_SUCCESS = 65535;
+}
+
+enum EnumExecFlag {
+  EEF_DEFAULT = 0;
+  EEF_ERROR = 0x1;
+  EEF_CANCELED = 0x2;
+  EEF_PAUSED = 0x4;
+}
+
+message JobGetRequest {
+}
+
+enum GpuOpt {
+  EGO_None = 0;
+  EGO_PREFERRED = 10;
+  EGO_REQUIRED = 100;
+}
+
+enum GpuModel {
+  EGM_All = 0;
+  EGM_NVIDIA = 1;
+  EGM_AMD = 2;
+}
+
+message GpuConf {
+  GpuOpt opt = 1;
+  uint64 vram = 2;
+  repeated GpuModel model = 3;
+}
+
+message JobGetResponse {
+  string job_id = 1;
+  string resource_id = 2;
+  Image image = 3;
+  GpuConf gpuConf = 4;
+  repeated string cmd = 5;
+  repeated JobInput inputs = 6;
+  repeated JobOutput outputs = 7;
+  repeated JobResource resources = 8;
+}
+
+message FileRequest {
+  string url = 1;
+  string method = 2;
+  repeated RequestHeader headers = 3;
+}
+
+message RequestHeader {
+  string name = 1;
+  string value = 2;
+}
+
+message JobInput {
+  string path = 1;
+  FileRequest req = 2;
+  uint64 size = 3;
+  bytes content = 4;
+  string configs = 5;
+}
+
+message JobOutput {
+  string id = 1;
+  string path = 2;
+  FileRequest req = 3;
+  string configs = 4;
+}
+
+message JobResource {
+  string path = 1;
+  FileRequest req = 2;
+}
+
+message Image {
+  string url = 1;
+  string auth = 2;
+  map<string, string> binds = 3;
+}
+
+message ExecNotificationRequest {
+  EnumExecState state = 1;
+  string id = 2;
+  string message = 3;
+  uint64 flag = 4;
+  uint64 current = 5;
+  uint64 total = 6;
+  repeated GpuStats gpu_stats = 7;
+  repeated ExecOutput outputs = 8;
+}
+
+enum ExecOutputStatus {
+  EOS_UNSPECIFIED = 0;
+  EOS_SUCCESS = 10;
+  EOS_ERROR = 20;
+}
+
+message ExecOutput {
+  string id = 1;
+  ExecOutputStatus status = 2;
+  string message = 3;
+  bytes content = 4;
+}
+
+message ExecNotificationResponse {
+
+}
+
+message GpuStats {
+  int32 id = 1;
+}

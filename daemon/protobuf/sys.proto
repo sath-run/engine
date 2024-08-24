@@ -1,6 +1,6 @@
 syntax = "proto3";
 package protobuf;
-option go_package = "github.com/sath-run/engine/engine/core/protobuf";
+option go_package = "github.com/sath-run/engine/daemon/protobuf";
 
 message SystemInfo {
   HostInfo host = 1;

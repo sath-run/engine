@@ -20,14 +20,9 @@ import (
 // upgradeCmd represents the upgrade command
 var upgradeCmd = &cobra.Command{
 	Use:   "upgrade",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: runUpgrade,
+	Short: "Upgrade sath to latest version",
+	Long:  `Upgrade sath to latest version`,
+	Run:   runUpgrade,
 }
 
 func checkSathLatestVersion() (string, error) {
@@ -48,14 +43,14 @@ func upgradeExecutables() error {
 	var err error
 	fmt.Println("downloading sath-engine")
 	url := fmt.Sprintf("https://download.sath.run/binaries/%s/%s/sath-engine", runtime.GOOS, runtime.GOARCH)
-	err = request.DownloadFile(filepath.Join(utils.ExecutableDir, "sath-engine"), url)
+	err = request.DownloadFile(filepath.Join(utils.SathHome, "sath-engine"), url)
 	if err != nil {
 		return fmt.Errorf("fail to download sath-engine %+v", err)
 	}
 
 	fmt.Println("downloading sath-cli")
 	url = fmt.Sprintf("https://download.sath.run/binaries/%s/%s/sath", runtime.GOOS, runtime.GOARCH)
-	err = request.DownloadFile(filepath.Join(utils.ExecutableDir, "sath"), url)
+	err = request.DownloadFile(filepath.Join(utils.SathHome, "sath"), url)
 	if err != nil {
 		return fmt.Errorf("fail to download sath-cli %+v", err)
 	}
