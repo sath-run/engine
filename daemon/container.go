@@ -25,7 +25,7 @@ type Container struct {
 	gpuOpt     pb.GpuOpt
 	vram       uint64
 	currentJob *Job
-	binds      map[string]string
+	binds      []string
 	logger     zerolog.Logger
 	resourceId string
 }
@@ -39,34 +39,39 @@ func newContainer(dockerCli *client.Client, dir string, job *Job) *Container {
 		dir:        dir,
 		gpuOpt:     job.metadata.GpuConf.Opt,
 		vram:       0, // TODO
-		binds:      map[string]string{},
 		resourceId: job.metadata.ResourceId,
 	}
 
 	for _, v := range []string{"data", "source", "output", "resource"} {
-		bind := job.metadata.Image.Binds[v]
-		if bind == "" {
-			bind = "/" + v
-		}
+		var (
+			src      string
+			dst      string
+			bind     string
+			readonly bool
+		)
 		if v == "resource" {
-			ctn.binds[job.resourceDir] = bind
+			src = job.resourceDir
+			readonly = true
 		} else {
-			ctn.binds[filepath.Join(ctn.dir, v)] = bind
+			src = filepath.Join(ctn.dir, v)
+			readonly = false
 		}
+		dst = job.metadata.Image.Binds[v]
+		if dst == "" {
+			dst = "/" + v
+		}
+		os.Mkdir(src, os.ModePerm)
+		if readonly {
+			bind = fmt.Sprintf("%s:%s:ro", src, dst)
+		} else {
+			bind = fmt.Sprintf("%s:%s", src, dst)
+		}
+		ctn.binds = append(ctn.binds, bind)
 	}
-
-	for dir := range ctn.binds {
-		os.Mkdir(dir, os.ModePerm)
-	}
-
 	return ctn
 }
 
 func (ctn *Container) init(ctx context.Context) error {
-	binds := []string{}
-	for k, v := range ctn.binds {
-		binds = append(binds, fmt.Sprintf("%s:%s", k, v))
-	}
 	gpuOptsVal := opts.GpuOpts{}
 	if ctn.gpuOpt != pb.GpuOpt_EGO_None {
 		gpuOptsVal.Set("all")
@@ -84,7 +89,7 @@ func (ctn *Container) init(ctx context.Context) error {
 		AttachStdout: true,
 		AttachStderr: true,
 	}, &container.HostConfig{
-		Binds: binds,
+		Binds: ctn.binds,
 		Resources: container.Resources{
 			DeviceRequests: gpuOptsVal.Value(),
 		},
