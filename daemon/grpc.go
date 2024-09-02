@@ -76,7 +76,7 @@ func NewConnectionWithClient(client pb.EngineClient) (*Connection, error) {
 
 	if userToken, err := meta.GetCredentialUserToken(); userToken != "" && err == nil {
 		// refresh login data using userToken
-		ctx := c.AppendToOutgoingContext(ctx, &User{token: userToken})
+		ctx := c.AppendToOutgoingContext(context.TODO(), &User{token: userToken})
 		if err := c.Login(ctx, "", ""); err != nil {
 			// we can safely ignore login error
 			log.Warn().Err(err).Msg("error login user")
@@ -113,7 +113,7 @@ func (c *Connection) Login(ctx context.Context, username string, password string
 		Name:  res.UserName,
 		Email: res.UserEmail,
 	}
-	if err := meta.SetCredentialUserToken(user.Id); err != nil {
+	if err := meta.SetCredentialUserToken(user.token); err != nil {
 		return err
 	}
 	c.user = &user

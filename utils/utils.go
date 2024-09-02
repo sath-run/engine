@@ -23,6 +23,7 @@ func init() {
 	} else {
 		SathHome = filepath.Dir(executable)
 	}
+	os.MkdirAll(SathHome, os.ModePerm)
 }
 
 func SockFile() string {
